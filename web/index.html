@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Local Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark"></div>
+        <div>
+          <h1>Local Studio</h1>
+          <p>100% local ?? no cloud ?? no filters</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <div id="backendStatus" class="status-pill disconnected">
+          <span class="dot"></span>
+          <span class="label">Detecting backend???</span>
+        </div>
+        <button id="settingsBtn" class="btn ghost" type="button">Settings</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="panel settings-panel">
+        <section class="panel-section">
+          <h2>Mode</h2>
+          <div class="mode-tabs" id="modeTabs">
+            <button type="button" class="mode-tab active" data-mode="txt2img">Text ??? Image</button>
+            <button type="button" class="mode-tab" data-mode="img2img">Image ??? Image</button>
+            <button type="button" class="mode-tab" data-mode="txt2video">Text ??? Video</button>
+            <button type="button" class="mode-tab" data-mode="img2video">Image ??? Video</button>
+          </div>
+        </section>
+
+        <section class="panel-section" id="modelSection">
+          <h2>Model</h2>
+          <label class="field" id="checkpointField">
+            <span>Checkpoint</span>
+            <select id="modelSelect">
+              <option value="">(auto / default)</option>
+            </select>
+          </label>
+          <label class="field hidden" id="videoModelField">
+            <span>Video model (SVD)</span>
+            <select id="videoModelSelect">
+              <option value="">(auto)</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="panel-section" id="sourceImageSection" hidden>
+          <h2>Source image</h2>
+          <div class="dropzone" id="dropzone">
+            <input id="sourceImageInput" type="file" accept="image/*" hidden />
+            <div id="dropzoneEmpty">
+              <p>Drop an image here or click to browse</p>
+            </div>
+            <img id="sourcePreview" alt="Source preview" hidden />
+          </div>
+          <button id="clearSourceBtn" class="btn ghost small" type="button" hidden>Remove image</button>
+        </section>
+
+        <section class="panel-section" id="similaritySection" hidden>
+          <h2>Similarity to source</h2>
+          <label class="field">
+            <span id="similarityLabel">45% ??? moderate change</span>
+            <input id="similarity" type="range" min="0" max="100" step="1" value="45" />
+          </label>
+          <p class="hint">Higher = stays closer to your original image. Lower = more creative change.</p>
+        </section>
+
+        <section class="panel-section" id="videoSection" hidden>
+          <h2>Video</h2>
+          <div class="grid-2">
+            <label class="field">
+              <span>Frames</span>
+              <input id="frames" type="number" min="8" max="120" value="25" />
+            </label>
+            <label class="field">
+              <span>FPS</span>
+              <input id="fps" type="number" min="1" max="60" value="8" />
+            </label>
+          </div>
+          <label class="field">
+            <span>Motion amount</span>
+            <input id="motionBucket" type="range" min="1" max="255" step="1" value="127" />
+            <span id="motionLabel" class="hint">127 ??? balanced motion</span>
+          </label>
+        </section>
+
+        <section class="panel-section" id="dimensionsSection">
+          <h2>Dimensions</h2>
+          <div class="preset-row" id="sizePresets">
+            <button type="button" data-w="512" data-h="512" class="chip">512??</button>
+            <button type="button" data-w="768" data-h="768" class="chip">768??</button>
+            <button type="button" data-w="1024" data-h="1024" class="chip active">1024??</button>
+            <button type="button" data-w="1024" data-h="576" class="chip" data-video="1">1024??576</button>
+            <button type="button" data-w="1024" data-h="1536" class="chip">2:3</button>
+            <button type="button" data-w="1536" data-h="1024" class="chip">3:2</button>
+          </div>
+          <div class="grid-2">
+            <label class="field">
+              <span>Width</span>
+              <input id="width" type="number" min="64" max="2048" step="64" value="1024" />
+            </label>
+            <label class="field">
+              <span>Height</span>
+              <input id="height" type="number" min="64" max="2048" step="64" value="1024" />
+            </label>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <h2>Sampling</h2>
+          <div class="grid-2">
+            <label class="field">
+              <span>Steps</span>
+              <input id="steps" type="number" min="1" max="150" value="28" />
+            </label>
+            <label class="field">
+              <span>CFG Scale</span>
+              <input id="cfgScale" type="number" min="1" max="30" step="0.5" value="7" />
+            </label>
+          </div>
+          <label class="field">
+            <span>Sampler</span>
+            <select id="samplerSelect"></select>
+          </label>
+          <label class="field">
+            <span>Scheduler</span>
+            <select id="schedulerSelect"></select>
+          </label>
+          <label class="field" id="clipSkipField">
+            <span>CLIP Skip</span>
+            <input id="clipSkip" type="number" min="1" max="12" value="1" />
+          </label>
+        </section>
+
+        <section class="panel-section">
+          <h2>Seed</h2>
+          <div class="seed-row">
+            <input id="seed" type="number" value="-1" />
+            <button id="randomSeedBtn" class="btn ghost" type="button" title="Random seed">????</button>
+          </div>
+          <label class="field inline">
+            <input id="lockSeed" type="checkbox" />
+            <span>Lock seed between runs</span>
+          </label>
+        </section>
+
+        <section class="panel-section" id="batchSection">
+          <h2>Batch</h2>
+          <div class="grid-2">
+            <label class="field">
+              <span>Images / pass</span>
+              <input id="batchSize" type="number" min="1" max="8" value="1" />
+            </label>
+            <label class="field">
+              <span>Batch count</span>
+              <input id="batchCount" type="number" min="1" max="100" value="1" />
+            </label>
+          </div>
+          <label class="field">
+            <span>Seed mode</span>
+            <select id="seedMode">
+              <option value="increment">Increment per batch</option>
+              <option value="fixed">Fixed (same seed)</option>
+              <option value="random">Random each batch</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Prompt variations <small>(one per line)</small></span>
+            <textarea id="promptVariations" rows="4" placeholder="cinematic lighting&#10;oil painting style&#10;macro detail"></textarea>
+          </label>
+          <label class="field inline">
+            <input id="variationSuffix" type="checkbox" checked />
+            <span>Append variations to base prompt</span>
+          </label>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <div class="prompt-card">
+          <label class="field">
+            <span>Prompt</span>
+            <textarea id="prompt" rows="5" placeholder="Describe what you want to generate???"></textarea>
+          </label>
+          <label class="field">
+            <span>Negative prompt</span>
+            <textarea id="negativePrompt" rows="3" placeholder="What to avoid???"></textarea>
+          </label>
+          <div class="prompt-actions">
+            <button id="generateBtn" class="btn primary" type="button">
+              <span class="btn-label">Generate</span>
+            </button>
+            <button id="batchBtn" class="btn secondary" type="button">Queue Batch</button>
+            <button id="cancelBtn" class="btn ghost danger" type="button" hidden>Cancel Queue</button>
+          </div>
+        </div>
+
+        <div class="queue-bar" id="queueBar" hidden>
+          <div class="queue-stats" id="queueStats"></div>
+          <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+        </div>
+
+        <div class="gallery" id="gallery">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-icon">???</div>
+            <h3>Ready when you are</h3>
+            <p>Start ComfyUI or Forge via Stability Matrix, then pick a mode above.</p>
+            <ul>
+              <li><strong>Text ??? Image / Image ??? Image</strong> ??? Forge or ComfyUI</li>
+              <li><strong>Text ??? Video / Image ??? Video</strong> ??? ComfyUI + SVD model</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="settingsDialog" class="modal">
+    <form method="dialog" class="modal-content">
+      <header>
+        <h2>Settings</h2>
+        <button class="icon-btn" value="cancel" type="submit">???</button>
+      </header>
+      <label class="field">
+        <span>Backend</span>
+        <select id="backendType">
+          <option value="auto">Auto-detect</option>
+          <option value="comfyui">ComfyUI</option>
+          <option value="automatic1111">Automatic1111 / Forge</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>ComfyUI URL</span>
+        <input id="comfyuiUrl" type="url" value="http://127.0.0.1:8188" />
+      </label>
+      <label class="field">
+        <span>A1111 / Forge URL</span>
+        <input id="automatic1111Url" type="url" value="http://127.0.0.1:7860" />
+      </label>
+      <label class="field inline">
+        <input id="saveToDisk" type="checkbox" checked />
+        <span>Save outputs to <code>output/</code></span>
+      </label>
+      <footer>
+        <button class="btn ghost" value="cancel" type="submit">Close</button>
+        <button id="saveSettingsBtn" class="btn primary" value="default" type="submit">Save</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="lightbox" class="lightbox">
+    <button class="lightbox-close" type="button" id="lightboxClose">???</button>
+    <img id="lightboxImg" alt="Preview" hidden />
+    <video id="lightboxVideo" controls loop hidden></video>
+    <div class="lightbox-meta" id="lightboxMeta"></div>
+  </dialog>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
