@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from server.backends import Automatic1111Backend, ComfyUIBackend
 from server.backends.base import BackendInfo, BaseBackend, GenerationParams, GenerationResult
+from server.progress import progress_state
 from server.queue import BatchRequest, JobQueue
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -44,7 +45,7 @@ class SettingsModel(BaseModel):
     backend_type: str = "auto"
     comfyui_url: str = DEFAULT_BACKENDS["comfyui"]
     automatic1111_url: str = DEFAULT_BACKENDS["automatic1111"]
-    save_to_disk: bool = True
+    save_to_disk: bool = False
 
 
 class GenerateRequest(BaseModel):
@@ -160,8 +161,15 @@ async def generate_with_backend(params: GenerationParams) -> GenerationResult:
             f"Mode '{params.mode}' is not supported by {info.name}. "
             f"Available: {', '.join(info.capabilities)}"
         )
-    result = await backend.generate(params)
-    return await _normalize_result(result, params)
+    progress_state.start(f"Generating {params.mode} via {info.name}...")
+    try:
+        result = await backend.generate(params)
+        normalized = await _normalize_result(result, params)
+        progress_state.finish("Generation complete")
+        return normalized
+    except Exception as exc:
+        progress_state.fail(str(exc))
+        raise
 
 
 queue.set_generator(generate_with_backend)
@@ -175,6 +183,16 @@ async def startup() -> None:
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/progress")
+async def generation_progress() -> dict[str, Any]:
+    return {
+        "active": progress_state.active,
+        "percent": progress_state.percent,
+        "message": progress_state.message,
+        "log": progress_state.log,
+    }
 
 
 @app.get("/api/settings")

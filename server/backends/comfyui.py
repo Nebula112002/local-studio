@@ -10,6 +10,8 @@ from typing import Any
 import httpx
 import websockets
 
+from server.progress import progress_state
+
 from .base import BackendInfo, BaseBackend, GenerationParams, GenerationResult
 
 
@@ -287,6 +289,7 @@ class ComfyUIBackend(BaseBackend):
             prompt_resp.raise_for_status()
             prompt_id = prompt_resp.json()["prompt_id"]
 
+        progress_state.update(2, f"Queued in ComfyUI ({prompt_id[:8]}...)")
         media = await self._wait_for_outputs(client_id, prompt_id)
         images = media.get("images", [])
         videos = media.get("videos", [])
@@ -318,11 +321,31 @@ class ComfyUIBackend(BaseBackend):
                         if isinstance(message, bytes):
                             continue
                         data = json.loads(message)
-                        if data.get("type") == "executing":
-                            node = data.get("data", {}).get("node")
-                            if node is None and data.get("data", {}).get("prompt_id") == prompt_id:
+                        msg_type = data.get("type")
+                        payload = data.get("data", {})
+
+                        if msg_type == "progress" and payload.get("prompt_id") == prompt_id:
+                            value = int(payload.get("value", 0))
+                            maximum = int(payload.get("max", 1)) or 1
+                            percent = round((value / maximum) * 100)
+                            node = payload.get("node") or "sampler"
+                            progress_state.update(
+                                percent,
+                                f"Sampling step {value}/{maximum} (node {node})",
+                            )
+                        elif msg_type == "executing":
+                            node = payload.get("node")
+                            if node is None and payload.get("prompt_id") == prompt_id:
+                                progress_state.update(100, "Finalizing output...")
                                 done.set()
                                 break
+                            if node and payload.get("prompt_id") == prompt_id:
+                                progress_state.update(
+                                    max(progress_state.percent, 5),
+                                    f"Running node {node}...",
+                                )
+                        elif msg_type == "execution_start" and payload.get("prompt_id") == prompt_id:
+                            progress_state.update(3, "ComfyUI started workflow")
             except Exception:
                 done.set()
 

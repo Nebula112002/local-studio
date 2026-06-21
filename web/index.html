@@ -16,13 +16,13 @@
         <div class="brand-mark"></div>
         <div>
           <h1>Local Studio</h1>
-          <p>100% local ?? no cloud ?? no filters</p>
+          <p>100% local — no cloud — no filters</p>
         </div>
       </div>
       <div class="topbar-actions">
         <div id="backendStatus" class="status-pill disconnected">
           <span class="dot"></span>
-          <span class="label">Detecting backend???</span>
+          <span class="label">Detecting backend…</span>
         </div>
         <button id="settingsBtn" class="btn ghost" type="button">Settings</button>
       </div>
@@ -33,10 +33,10 @@
         <section class="panel-section">
           <h2>Mode</h2>
           <div class="mode-tabs" id="modeTabs">
-            <button type="button" class="mode-tab active" data-mode="txt2img">Text ??? Image</button>
-            <button type="button" class="mode-tab" data-mode="img2img">Image ??? Image</button>
-            <button type="button" class="mode-tab" data-mode="txt2video">Text ??? Video</button>
-            <button type="button" class="mode-tab" data-mode="img2video">Image ??? Video</button>
+            <button type="button" class="mode-tab active" data-mode="txt2img">Text → Image</button>
+            <button type="button" class="mode-tab" data-mode="img2img">Image → Image</button>
+            <button type="button" class="mode-tab" data-mode="txt2video">Text → Video</button>
+            <button type="button" class="mode-tab" data-mode="img2video">Image → Video</button>
           </div>
         </section>
 
@@ -71,7 +71,7 @@
         <section class="panel-section" id="similaritySection" hidden>
           <h2>Similarity to source</h2>
           <label class="field">
-            <span id="similarityLabel">45% ??? moderate change</span>
+            <span id="similarityLabel">45% — moderate change</span>
             <input id="similarity" type="range" min="0" max="100" step="1" value="45" />
           </label>
           <p class="hint">Higher = stays closer to your original image. Lower = more creative change.</p>
@@ -92,17 +92,17 @@
           <label class="field">
             <span>Motion amount</span>
             <input id="motionBucket" type="range" min="1" max="255" step="1" value="127" />
-            <span id="motionLabel" class="hint">127 ??? balanced motion</span>
+            <span id="motionLabel" class="hint">127 — balanced motion</span>
           </label>
         </section>
 
         <section class="panel-section" id="dimensionsSection">
           <h2>Dimensions</h2>
           <div class="preset-row" id="sizePresets">
-            <button type="button" data-w="512" data-h="512" class="chip">512??</button>
-            <button type="button" data-w="768" data-h="768" class="chip">768??</button>
-            <button type="button" data-w="1024" data-h="1024" class="chip active">1024??</button>
-            <button type="button" data-w="1024" data-h="576" class="chip" data-video="1">1024??576</button>
+            <button type="button" data-w="512" data-h="512" class="chip">512×512</button>
+            <button type="button" data-w="768" data-h="768" class="chip">768×768</button>
+            <button type="button" data-w="1024" data-h="1024" class="chip active">1024×1024</button>
+            <button type="button" data-w="1024" data-h="576" class="chip" data-video="1">1024×576</button>
             <button type="button" data-w="1024" data-h="1536" class="chip">2:3</button>
             <button type="button" data-w="1536" data-h="1024" class="chip">3:2</button>
           </div>
@@ -148,7 +148,7 @@
           <h2>Seed</h2>
           <div class="seed-row">
             <input id="seed" type="number" value="-1" />
-            <button id="randomSeedBtn" class="btn ghost" type="button" title="Random seed">????</button>
+            <button id="randomSeedBtn" class="btn ghost" type="button" title="Random seed">🎲</button>
           </div>
           <label class="field inline">
             <input id="lockSeed" type="checkbox" />
@@ -191,11 +191,11 @@
         <div class="prompt-card">
           <label class="field">
             <span>Prompt</span>
-            <textarea id="prompt" rows="5" placeholder="Describe what you want to generate???"></textarea>
+            <textarea id="prompt" rows="5" placeholder="Describe what you want to generate…"></textarea>
           </label>
           <label class="field">
             <span>Negative prompt</span>
-            <textarea id="negativePrompt" rows="3" placeholder="What to avoid???"></textarea>
+            <textarea id="negativePrompt" rows="3" placeholder="What to avoid…"></textarea>
           </label>
           <div class="prompt-actions">
             <button id="generateBtn" class="btn primary" type="button">
@@ -206,6 +206,15 @@
           </div>
         </div>
 
+        <div class="gen-status" id="genStatus" hidden>
+          <div class="gen-status-header">
+            <span id="genStatusMessage">Starting…</span>
+            <span id="genStatusPercent">0%</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" id="genProgressFill"></div></div>
+          <div class="gen-log" id="genLog" aria-live="polite"></div>
+        </div>
+
         <div class="queue-bar" id="queueBar" hidden>
           <div class="queue-stats" id="queueStats"></div>
           <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
@@ -213,12 +222,12 @@
 
         <div class="gallery" id="gallery">
           <div class="empty-state" id="emptyState">
-            <div class="empty-icon">???</div>
+            <div class="empty-icon">✦</div>
             <h3>Ready when you are</h3>
             <p>Start ComfyUI or Forge via Stability Matrix, then pick a mode above.</p>
             <ul>
-              <li><strong>Text ??? Image / Image ??? Image</strong> ??? Forge or ComfyUI</li>
-              <li><strong>Text ??? Video / Image ??? Video</strong> ??? ComfyUI + SVD model</li>
+              <li><strong>Text → Image / Image → Image</strong> — Forge or ComfyUI</li>
+              <li><strong>Text → Video / Image → Video</strong> — ComfyUI + SVD model</li>
             </ul>
           </div>
         </div>
@@ -230,7 +239,7 @@
     <form method="dialog" class="modal-content">
       <header>
         <h2>Settings</h2>
-        <button class="icon-btn" value="cancel" type="submit">???</button>
+        <button class="icon-btn" value="cancel" type="submit">×</button>
       </header>
       <label class="field">
         <span>Backend</span>
@@ -249,7 +258,7 @@
         <input id="automatic1111Url" type="url" value="http://127.0.0.1:7860" />
       </label>
       <label class="field inline">
-        <input id="saveToDisk" type="checkbox" checked />
+        <input id="saveToDisk" type="checkbox" />
         <span>Save outputs to <code>output/</code></span>
       </label>
       <footer>
@@ -260,7 +269,7 @@
   </dialog>
 
   <dialog id="lightbox" class="lightbox">
-    <button class="lightbox-close" type="button" id="lightboxClose">???</button>
+    <button class="lightbox-close" type="button" id="lightboxClose">×</button>
     <img id="lightboxImg" alt="Preview" hidden />
     <video id="lightboxVideo" controls loop hidden></video>
     <div class="lightbox-meta" id="lightboxMeta"></div>

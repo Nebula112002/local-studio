@@ -68,7 +68,7 @@ class JobQueue:
                     job_id = str(uuid.uuid4())
                     label = f"Batch {index + 1}"
                     if len(prompts) > 1:
-                        label += f" ?? Var {prompt_index + 1}"
+                        label += f" - Var {prompt_index + 1}"
                     job = BatchJob(id=job_id, params=params, label=label)
                     self._jobs[job_id] = job
                     self._order.append(job_id)

@@ -10,6 +10,7 @@ const MODE_LABELS = {
 const state = {
   backend: null,
   polling: null,
+  progressPolling: null,
   lockedSeed: null,
   galleryItems: [],
   mode: "txt2img",
@@ -62,6 +63,11 @@ const els = {
   queueBar: $("queueBar"),
   queueStats: $("queueStats"),
   progressFill: $("progressFill"),
+  genStatus: $("genStatus"),
+  genStatusMessage: $("genStatusMessage"),
+  genStatusPercent: $("genStatusPercent"),
+  genProgressFill: $("genProgressFill"),
+  genLog: $("genLog"),
   settingsBtn: $("settingsBtn"),
   settingsDialog: $("settingsDialog"),
   backendType: $("backendType"),
@@ -105,7 +111,7 @@ function updateSimilarityLabel() {
   else if (value >= 50) text = "balanced change";
   else if (value >= 25) text = "significant change";
   else text = "heavy rework";
-  els.similarityLabel.textContent = `${value}% ??? ${text}`;
+  els.similarityLabel.textContent = `${value}% — ${text}`;
 }
 
 function updateMotionLabel() {
@@ -113,7 +119,7 @@ function updateMotionLabel() {
   let text = "balanced motion";
   if (value < 64) text = "subtle motion";
   else if (value > 180) text = "high motion";
-  els.motionLabel.textContent = `${value} ??? ${text}`;
+  els.motionLabel.textContent = `${value} — ${text}`;
 }
 
 function setMode(mode) {
@@ -221,7 +227,7 @@ function addMediaCard({ images = [], videos = [], seeds, prompt, label, status =
     const card = document.createElement("article");
     card.className = `card placeholder status-${status}`;
     card.dataset.jobCard = "1";
-    card.innerHTML = `<div>${label || status}</div><div>${error || "Working???"}</div>`;
+    card.innerHTML = `<div>${label || status}</div><div>${error || "Working…"}</div>`;
     els.gallery.prepend(card);
     return card;
   }
@@ -233,7 +239,7 @@ function addMediaCard({ images = [], videos = [], seeds, prompt, label, status =
     card.innerHTML = `
       <video src="${videoSrc(vid)}" muted loop playsinline></video>
       <div class="card-body">
-        <div><strong>Video</strong> ?? Seed ${seed ?? "?"}</div>
+        <div><strong>Video</strong> · Seed ${seed ?? "?"}</div>
         <div class="truncate">${prompt || ""}</div>
       </div>
       <div class="card-actions">
@@ -257,13 +263,13 @@ function addMediaCard({ images = [], videos = [], seeds, prompt, label, status =
     card.innerHTML = `
       <img src="${imageSrc(img)}" alt="Generated image" />
       <div class="card-body">
-        <div><strong>${mode === "img2img" ? "Img2Img" : "Image"}</strong> ?? Seed ${seed ?? "?"}</div>
+        <div><strong>${mode === "img2img" ? "Img2Img" : "Image"}</strong> · Seed ${seed ?? "?"}</div>
         <div class="truncate">${prompt || ""}</div>
       </div>
       <div class="card-actions">
         <button class="btn ghost" type="button" data-action="download">Download</button>
         <button class="btn ghost" type="button" data-action="reuse">Reuse seed</button>
-        <button class="btn ghost" type="button" data-action="animate">??? Video</button>
+        <button class="btn ghost" type="button" data-action="animate">→ Video</button>
       </div>
     `;
     card.querySelector("img").addEventListener("click", () => openLightbox(img, null, seed, prompt, false));
@@ -295,7 +301,7 @@ function openLightbox(img, vid, seed, prompt, isVideo) {
   } else {
     els.lightboxImg.src = imageSrc(img);
   }
-  els.lightboxMeta.textContent = `Seed ${seed ?? "?"} ?? ${prompt || ""}`;
+  els.lightboxMeta.textContent = `Seed ${seed ?? "?"} — ${prompt || ""}`;
   els.lightbox.showModal();
 }
 
@@ -317,7 +323,7 @@ function setBusy(busy) {
   els.generateBtn.disabled = busy;
   els.batchBtn.disabled = busy;
   const label = MODE_LABELS[state.mode] || "Generate";
-  els.generateBtn.querySelector(".btn-label").textContent = busy ? "Working???" : label;
+  els.generateBtn.querySelector(".btn-label").textContent = busy ? "Working…" : label;
 }
 
 async function refreshBackend() {
@@ -329,7 +335,7 @@ async function refreshBackend() {
       return;
     }
     const caps = info.capabilities || ["txt2img"];
-    setStatus(true, `${info.name} ?? ${caps.join(", ")}`);
+    setStatus(true, `${info.name} — ${caps.join(", ")}`);
     fillSelect(els.modelSelect, ["", ...info.models]);
     els.modelSelect.querySelector("option").textContent = "(auto / default)";
     fillSelect(els.videoModelSelect, ["", ...(info.video_models || [])]);
@@ -394,12 +400,60 @@ async function saveSettings(e) {
   await refreshBackend();
 }
 
+function showGenStatus(show) {
+  els.genStatus.hidden = !show;
+}
+
+function updateGenStatusUI(data) {
+  const percent = Math.round(data.percent ?? 0);
+  els.genStatusMessage.textContent = data.message || "Working…";
+  els.genStatusPercent.textContent = `${percent}%`;
+  els.genProgressFill.style.width = `${percent}%`;
+  if (data.log?.length) {
+    els.genLog.textContent = data.log.join("\n");
+    els.genLog.scrollTop = els.genLog.scrollHeight;
+  }
+}
+
+async function pollProgress() {
+  try {
+    updateGenStatusUI(await API.get("/api/progress"));
+  } catch {}
+}
+
+function startProgressPolling() {
+  showGenStatus(true);
+  els.genLog.textContent = "";
+  els.genProgressFill.style.width = "0%";
+  els.genStatusPercent.textContent = "0%";
+  if (state.progressPolling) return;
+  state.progressPolling = setInterval(pollProgress, 600);
+  pollProgress();
+}
+
+function stopProgressPolling(finalMessage) {
+  if (state.progressPolling) {
+    clearInterval(state.progressPolling);
+    state.progressPolling = null;
+  }
+  pollProgress().finally(() => {
+    if (finalMessage) {
+      els.genStatusMessage.textContent = finalMessage;
+      els.genStatusPercent.textContent = "100%";
+      els.genProgressFill.style.width = "100%";
+    }
+    setTimeout(() => showGenStatus(false), finalMessage ? 2000 : 0);
+  });
+}
+
 async function generateOnce() {
   if (!validateRequest()) return;
   setBusy(true);
+  startProgressPolling();
   try {
     const payload = getPayload();
     const result = await API.post("/api/generate", payload);
+    stopProgressPolling("Generation complete");
     addMediaCard({
       images: result.images,
       videos: result.videos,
@@ -414,6 +468,8 @@ async function generateOnce() {
       state.lockedSeed = result.seeds[0];
     }
   } catch (err) {
+    stopProgressPolling();
+    showGenStatus(false);
     alert(err.message || String(err));
   } finally {
     setBusy(false);
@@ -449,7 +505,7 @@ function updateQueueUI(data) {
   const { status, jobs } = data;
   const done = status.completed + status.failed;
   const total = status.total || 1;
-  els.queueStats.textContent = `Queue: ${status.running ? "running" : "idle"} ?? ${done}/${total} done ?? ${status.queued} waiting`;
+  els.queueStats.textContent = `Queue: ${status.running ? "running" : "idle"} — ${done}/${total} done — ${status.queued} waiting`;
   els.progressFill.style.width = `${Math.round((done / total) * 100)}%`;
 
   document.querySelectorAll("[data-job-card]").forEach((el) => el.remove());
