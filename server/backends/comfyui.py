@@ -42,9 +42,18 @@ class ComfyUIBackend(BaseBackend):
         values = node_info.get(field, [[]])[0]
         return values if isinstance(values, list) else []
 
+    @staticmethod
+    def _is_video_checkpoint_name(name: str) -> bool:
+        lowered = name.lower()
+        return any(token in lowered for token in ("svd", "wan", "ti2v", "i2v", "video2"))
+
     async def get_info(self) -> BackendInfo:
         info = await self._fetch_object_info()
-        models = self._list_from_object_info(info, "CheckpointLoaderSimple", "ckpt_name")
+        models = [
+            model
+            for model in self._list_from_object_info(info, "CheckpointLoaderSimple", "ckpt_name")
+            if not self._is_video_checkpoint_name(model)
+        ]
         samplers = self._list_from_object_info(info, "KSampler", "sampler_name")
         schedulers = ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform"]
         video_models = self._list_from_object_info(info, "ImageOnlyCheckpointLoader", "ckpt_name")
@@ -239,8 +248,17 @@ class ComfyUIBackend(BaseBackend):
 
     def _default_checkpoint(self) -> str:
         if self._object_info:
-            models = self._list_from_object_info(self._object_info, "CheckpointLoaderSimple", "ckpt_name")
+            models = [
+                model
+                for model in self._list_from_object_info(self._object_info, "CheckpointLoaderSimple", "ckpt_name")
+                if not self._is_video_checkpoint_name(model)
+            ]
             if models:
+                preferred = ("realisticvision", "juggernaut", "epicrealism", "realism")
+                for needle in preferred:
+                    for model in models:
+                        if needle in model.lower():
+                            return model
                 return models[0]
         return "v1-5-pruned-emaonly.safetensors"
 

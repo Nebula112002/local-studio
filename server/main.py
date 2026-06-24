@@ -13,13 +13,15 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from server.backends import Automatic1111Backend, ComfyUIBackend
+from server.paths import agent_output_dir
 from server.backends.base import BackendInfo, BaseBackend, GenerationParams, GenerationResult
+from server.hosts import service_urls
 from server.progress import progress_state
 from server.queue import BatchRequest, JobQueue
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = ROOT_DIR / "web"
-OUTPUT_DIR = ROOT_DIR / "output"
+OUTPUT_DIR = agent_output_dir()
 CONFIG_PATH = ROOT_DIR / "config.json"
 
 DEFAULT_BACKENDS = {
@@ -182,7 +184,7 @@ async def startup() -> None:
 
 @app.get("/api/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", **service_urls()}
 
 
 @app.get("/api/progress")
