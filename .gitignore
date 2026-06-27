@@ -3,4 +3,7 @@ output/
 __pycache__/
 *.pyc
 config.json
+.env
+.env.*
+!.env.example
 .DS_Store
