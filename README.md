@@ -47,6 +47,9 @@ Higher similarity = output stays closer to your source image. Lower = more creat
   - Images per pass (batch size)
   - Seed modes: increment, fixed, or random per batch
   - Prompt variations (one per line, appended or standalone)
+- **Character profiles** — save reusable character definitions (hair, eyes, style, outfit, seed) for consistent generations across sessions
+- **Local AI prompt assistant** — enhance prompts, generate scene ideas, and write negative prompts via **Ollama** or any OpenAI-compatible local API (no cloud, no filtering)
+- **Quality presets** — one-click photorealistic, cinematic, portrait, fashion, anime, and artistic settings
 - **Gallery** — preview, lightbox, download, reuse seed
 - **Auto-save** — PNGs written to `output/` (toggle in Settings)
 - **Uncensored** — prompts pass through unchanged to your local model
@@ -77,6 +80,41 @@ Local-Studio/
 
 For uncensored results, use an uncensored checkpoint in Stability Matrix (e.g. realistic or anime models without safety filters). Local Studio does not add any safety layer.
 
+## Character profiles
+
+Create characters in the left sidebar (**+ New**) with appearance traits, default outfit, art style, and generation preferences. Select a character from the dropdown to auto-fill prompts and settings.
+
+Each profile stores:
+- Appearance traits (hair, eyes, skin, body type, etc.)
+- Default negative prompt and quality settings
+- Locked seed for face/body consistency
+- Saved scene ideas
+
+## Local AI prompt assistant
+
+Local Studio can call a **local LLM** to enhance your prompts — entirely on your machine, no cloud APIs.
+
+### Setup (Ollama — recommended)
+
+1. Install [Ollama](https://ollama.com)
+2. Pull a model: `ollama pull llama3.2` (or `mistral`, `dolphin-mixtral`, etc.)
+3. Open **Settings → Local AI Assistant** and confirm URL `http://127.0.0.1:11434`
+
+### What it does
+
+| Button | Action |
+|--------|--------|
+| **Enhance prompt** | Expands your prompt with lighting, composition, quality tags |
+| **Scene ideas** | Generates clickable scene/setting suggestions for the active character |
+| **Better negative** | Writes a tailored negative prompt |
+| **Apply** | Copies the assistant output into your prompt fields |
+
+The assistant uses whatever local model you choose — including uncensored models — with no content filtering from Local Studio.
+
+## Quality presets
+
+Click a preset chip above the prompt (Photorealistic, Cinematic, Portrait, Fashion, Anime, Artistic) to apply optimized steps, CFG, sampler, and prompt suffixes in one click.
+
 ## Transferring this project
 
 Clone or copy this repository to another machine. Run `start.ps1` or `start.bat` after Python is installed.
@@ -96,3 +134,10 @@ Clone or copy this repository to another machine. Run `start.ps1` or `start.bat`
 - `POST /api/generate` — single image
 - `POST /api/batch` — queue batch jobs
 - `GET /api/queue` — queue status and results
+- `GET /api/profiles` — list character profiles
+- `POST /api/profiles` — create profile
+- `PUT /api/profiles/{id}` — update profile
+- `DELETE /api/profiles/{id}` — delete profile
+- `GET /api/presets` — quality preset list
+- `POST /api/assistant/enhance` — run local LLM prompt assistant
+- `GET /api/assistant/status` — check Ollama/API connectivity

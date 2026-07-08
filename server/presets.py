@@ -1,0 +1,111 @@
+"""Quality presets with optimized generation parameters."""
+
+from __future__ import annotations
+
+from typing import Any
+
+QUALITY_PRESETS: dict[str, dict[str, Any]] = {
+    "photorealistic": {
+        "label": "Photorealistic",
+        "description": "Sharp, detailed realism — best for portrait/photo models",
+        "steps": 30,
+        "cfg_scale": 6.5,
+        "sampler": "dpmpp_2m",
+        "scheduler": "karras",
+        "clip_skip": 2,
+        "prompt_suffix": "masterpiece, best quality, highly detailed, photorealistic, 8k uhd, sharp focus, professional photography",
+        "negative_prompt": (
+            "low quality, worst quality, blurry, deformed, bad anatomy, extra limbs, "
+            "watermark, text, logo, cartoon, anime, painting, illustration, "
+            "oversaturated, plastic skin, doll-like"
+        ),
+    },
+    "cinematic": {
+        "label": "Cinematic",
+        "description": "Film-like lighting and composition",
+        "steps": 32,
+        "cfg_scale": 7.0,
+        "sampler": "dpmpp_2m",
+        "scheduler": "karras",
+        "clip_skip": 2,
+        "prompt_suffix": "cinematic lighting, dramatic atmosphere, film grain, depth of field, bokeh, movie still, anamorphic",
+        "negative_prompt": (
+            "low quality, worst quality, blurry, flat lighting, overexposed, "
+            "amateur, snapshot, watermark, text"
+        ),
+    },
+    "portrait": {
+        "label": "Portrait",
+        "description": "Close-up face shots with flattering light",
+        "steps": 28,
+        "cfg_scale": 6.0,
+        "sampler": "dpmpp_sde",
+        "scheduler": "karras",
+        "clip_skip": 2,
+        "width": 832,
+        "height": 1216,
+        "prompt_suffix": "portrait, face focus, soft natural lighting, shallow depth of field, detailed eyes, skin texture",
+        "negative_prompt": (
+            "low quality, worst quality, blurry, bad face, deformed eyes, "
+            "asymmetric face, extra fingers, watermark"
+        ),
+    },
+    "fashion": {
+        "label": "Fashion / Editorial",
+        "description": "Full-body fashion shoot aesthetic",
+        "steps": 30,
+        "cfg_scale": 7.0,
+        "sampler": "dpmpp_2m",
+        "scheduler": "karras",
+        "clip_skip": 2,
+        "width": 832,
+        "height": 1216,
+        "prompt_suffix": "fashion photography, editorial, studio lighting, vogue style, elegant pose, high fashion",
+        "negative_prompt": (
+            "low quality, worst quality, blurry, casual, messy, bad pose, "
+            "watermark, text, logo"
+        ),
+    },
+    "anime": {
+        "label": "Anime",
+        "description": "Clean anime/manga illustration style",
+        "steps": 28,
+        "cfg_scale": 7.5,
+        "sampler": "euler_ancestral",
+        "scheduler": "normal",
+        "clip_skip": 2,
+        "prompt_suffix": "masterpiece, best quality, anime style, vibrant colors, detailed, clean lineart",
+        "negative_prompt": (
+            "low quality, worst quality, blurry, bad anatomy, extra limbs, "
+            "realistic, photo, 3d, watermark, text"
+        ),
+    },
+    "artistic": {
+        "label": "Artistic",
+        "description": "Painterly, creative interpretation",
+        "steps": 35,
+        "cfg_scale": 8.0,
+        "sampler": "dpmpp_2m",
+        "scheduler": "karras",
+        "clip_skip": 1,
+        "prompt_suffix": "digital art, painterly, artistic, beautiful composition, rich colors, detailed brushwork",
+        "negative_prompt": (
+            "low quality, worst quality, blurry, photo, realistic, "
+            "watermark, text, ugly"
+        ),
+    },
+}
+
+
+def list_presets() -> list[dict[str, Any]]:
+    return [
+        {"id": key, **{k: v for k, v in preset.items()}}
+        for key, preset in QUALITY_PRESETS.items()
+    ]
+
+
+def get_preset(preset_id: str) -> dict[str, Any] | None:
+    preset = QUALITY_PRESETS.get(preset_id)
+    if not preset:
+        return None
+    return {"id": preset_id, **preset}

@@ -163,8 +163,26 @@ function applyCapabilityHints() {
 }
 
 function getPayload() {
+  const profile = ProfileManager.getActive();
+  let prompt = els.prompt.value.trim();
+  const scene = document.getElementById("sceneInput")?.value?.trim() || "";
+
+  // If character is active and prompt doesn't already include appearance, merge
+  if (profile && scene && !prompt.includes(profile.hair || "___")) {
+    const appearance = profile.prompt_prefix || [
+      profile.age_range,
+      profile.ethnicity,
+      profile.hair && `${profile.hair} hair`,
+      profile.eyes && `${profile.eyes} eyes`,
+      profile.art_style,
+    ].filter(Boolean).join(", ");
+    if (appearance && !prompt.startsWith(appearance.slice(0, 20))) {
+      prompt = [appearance, scene, prompt].filter(Boolean).join(", ");
+    }
+  }
+
   return {
-    prompt: els.prompt.value.trim(),
+    prompt,
     negative_prompt: els.negativePrompt.value.trim(),
     mode: state.mode,
     width: Number(els.width.value),
@@ -386,6 +404,12 @@ async function loadSettings() {
   els.comfyuiUrl.value = settings.comfyui_url;
   els.automatic1111Url.value = settings.automatic1111_url;
   els.saveToDisk.checked = settings.save_to_disk;
+  if ($("assistantEnabled")) $("assistantEnabled").checked = settings.assistant_enabled !== false;
+  if ($("assistantProvider")) $("assistantProvider").value = settings.assistant_provider || "ollama";
+  if ($("assistantUrl")) $("assistantUrl").value = settings.assistant_url || "http://127.0.0.1:11434";
+  if ($("assistantModel")) $("assistantModel").value = settings.assistant_model || "llama3.2";
+  if ($("assistantApiKey")) $("assistantApiKey").value = settings.assistant_api_key || "";
+  if ($("assistantTemperature")) $("assistantTemperature").value = settings.assistant_temperature ?? 0.8;
 }
 
 async function saveSettings(e) {
@@ -395,9 +419,16 @@ async function saveSettings(e) {
     comfyui_url: els.comfyuiUrl.value,
     automatic1111_url: els.automatic1111Url.value,
     save_to_disk: els.saveToDisk.checked,
+    assistant_enabled: $("assistantEnabled")?.checked ?? true,
+    assistant_provider: $("assistantProvider")?.value || "ollama",
+    assistant_url: $("assistantUrl")?.value || "http://127.0.0.1:11434",
+    assistant_model: $("assistantModel")?.value || "llama3.2",
+    assistant_api_key: $("assistantApiKey")?.value || "",
+    assistant_temperature: Number($("assistantTemperature")?.value) || 0.8,
   });
   els.settingsDialog.close();
   await refreshBackend();
+  await PromptAssistant.checkStatus();
 }
 
 function showGenStatus(show) {
@@ -615,12 +646,19 @@ async function init() {
   bindPresets();
   bindSourceImage();
   bindEvents();
+  ProfileManager.bindEvents();
+  PromptAssistant.bindEvents();
+  QualityPresets.bindEvents();
   updateSimilarityLabel();
   updateMotionLabel();
   setMode("txt2img");
   await loadSettings();
   await refreshBackend();
+  await ProfileManager.load();
+  await QualityPresets.load();
+  await PromptAssistant.checkStatus();
   setInterval(refreshBackend, 15000);
+  setInterval(() => PromptAssistant.checkStatus(), 30000);
 }
 
 init();

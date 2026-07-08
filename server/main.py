@@ -16,7 +16,22 @@ from server.backends import Automatic1111Backend, ComfyUIBackend
 from server.paths import agent_output_dir
 from server.backends.base import BackendInfo, BaseBackend, GenerationParams, GenerationResult
 from server.hosts import service_urls
+from server.presets import get_preset, list_presets
+from server.profiles import (
+    CharacterProfile,
+    create_profile,
+    delete_profile,
+    get_profile,
+    list_profiles,
+    update_profile,
+)
 from server.progress import progress_state
+from server.prompt_assistant import (
+    AssistantSettings,
+    EnhanceRequest,
+    check_assistant_status,
+    run_assistant,
+)
 from server.queue import BatchRequest, JobQueue
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -48,6 +63,13 @@ class SettingsModel(BaseModel):
     comfyui_url: str = DEFAULT_BACKENDS["comfyui"]
     automatic1111_url: str = DEFAULT_BACKENDS["automatic1111"]
     save_to_disk: bool = False
+    # Local LLM prompt assistant (Ollama or OpenAI-compatible)
+    assistant_enabled: bool = True
+    assistant_provider: str = "ollama"
+    assistant_url: str = "http://127.0.0.1:11434"
+    assistant_model: str = "llama3.2"
+    assistant_api_key: str = ""
+    assistant_temperature: float = 0.8
 
 
 class GenerateRequest(BaseModel):
@@ -290,6 +312,91 @@ async def cancel_queue() -> dict[str, str]:
 async def clear_queue() -> dict[str, str]:
     queue.clear_completed()
     return {"status": "cleared"}
+
+
+def _assistant_settings() -> AssistantSettings:
+    s = load_settings()
+    return AssistantSettings(
+        enabled=s.assistant_enabled,
+        provider=s.assistant_provider,  # type: ignore[arg-type]
+        base_url=s.assistant_url,
+        model=s.assistant_model,
+        api_key=s.assistant_api_key,
+        temperature=s.assistant_temperature,
+    )
+
+
+@app.get("/api/presets")
+async def presets_list() -> list[dict[str, Any]]:
+    return list_presets()
+
+
+@app.get("/api/presets/{preset_id}")
+async def presets_get(preset_id: str) -> dict[str, Any]:
+    preset = get_preset(preset_id)
+    if not preset:
+        raise HTTPException(status_code=404, detail="Preset not found")
+    return preset
+
+
+@app.get("/api/profiles")
+async def profiles_list() -> list[dict[str, Any]]:
+    return [p.model_dump() for p in list_profiles()]
+
+
+@app.post("/api/profiles")
+async def profiles_create(profile: CharacterProfile) -> dict[str, Any]:
+    created = create_profile(profile.model_dump(exclude_none=True))
+    return created.model_dump()
+
+
+@app.get("/api/profiles/{profile_id}")
+async def profiles_get(profile_id: str) -> dict[str, Any]:
+    profile = get_profile(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return profile.model_dump()
+
+
+@app.put("/api/profiles/{profile_id}")
+async def profiles_update(profile_id: str, profile: CharacterProfile) -> dict[str, Any]:
+    updated = update_profile(profile_id, profile.model_dump(exclude={"id"}, exclude_none=True))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return updated.model_dump()
+
+
+@app.delete("/api/profiles/{profile_id}")
+async def profiles_delete(profile_id: str) -> dict[str, str]:
+    if not delete_profile(profile_id):
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return {"status": "deleted"}
+
+
+@app.get("/api/profiles/{profile_id}/defaults")
+async def profiles_defaults(profile_id: str) -> dict[str, Any]:
+    profile = get_profile(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return profile.to_generation_defaults()
+
+
+@app.get("/api/assistant/status")
+async def assistant_status() -> dict[str, Any]:
+    return await check_assistant_status(_assistant_settings())
+
+
+@app.post("/api/assistant/enhance")
+async def assistant_enhance(request: EnhanceRequest) -> dict[str, Any]:
+    try:
+        return await run_assistant(_assistant_settings(), request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"LLM request failed: {exc}. Is Ollama running? Try: ollama pull {load_settings().assistant_model}",
+        ) from exc
 
 
 @app.get("/")
