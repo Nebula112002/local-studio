@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Local Studio</title>
+  <meta name="description" content="Premium local AI image and video generation studio" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -15,11 +16,12 @@
       <div class="brand">
         <div class="brand-mark"></div>
         <div>
-          <h1>Local Studio</h1>
-          <p>100% local — no cloud — no filters</p>
+          <h1>Local Studio <span class="pro-badge">Pro</span></h1>
+          <p>Premium local image &amp; video generation</p>
         </div>
       </div>
       <div class="topbar-actions">
+        <div id="accessBar" class="access-bar"></div>
         <div id="backendStatus" class="status-pill disconnected">
           <span class="dot"></span>
           <span class="label">Detecting backend…</span>
@@ -94,6 +96,7 @@
             <input id="motionBucket" type="range" min="1" max="255" step="1" value="127" />
             <span id="motionLabel" class="hint">127 — balanced motion</span>
           </label>
+          <div class="preset-row" id="videoPresets"></div>
         </section>
 
         <section class="panel-section" id="dimensionsSection">
@@ -156,6 +159,15 @@
           </label>
         </section>
 
+        <section class="panel-section" id="profilesSection">
+          <div class="section-header">
+            <h2>Characters</h2>
+            <button id="newProfileBtn" class="btn ghost small" type="button">+ New</button>
+          </div>
+          <div id="profileList" class="profile-list"></div>
+          <div id="profileTemplates" class="template-row"></div>
+        </section>
+
         <section class="panel-section" id="batchSection">
           <h2>Batch</h2>
           <div class="grid-2">
@@ -189,6 +201,41 @@
 
       <section class="workspace">
         <div class="prompt-card">
+          <div class="prompt-toolbar">
+            <div class="toolbar-group">
+              <label class="field compact">
+                <span>Character</span>
+                <select id="profileSelect">
+                  <option value="">No character selected</option>
+                </select>
+              </label>
+              <button id="applyProfileBtn" class="btn ghost small" type="button">Apply</button>
+              <button id="batchScenesBtn" class="btn secondary small" type="button" title="Queue all saved scenes">Batch scenes</button>
+              <button id="loadRefBtn" class="btn ghost small" type="button" hidden title="Load reference image">Ref</button>
+            </div>
+            <div id="assistantStatus" class="status-pill disconnected assistant-pill">
+              <span class="dot"></span>
+              <span class="label">LLM offline</span>
+            </div>
+          </div>
+
+          <div class="preset-section">
+            <span class="preset-label">Quality preset</span>
+            <div class="preset-row" id="qualityPresets"></div>
+            <input type="hidden" id="qualityPreset" data-active="" />
+          </div>
+
+          <div class="preset-section">
+            <span class="preset-label">Social / platform size</span>
+            <div class="preset-row" id="socialPresets"></div>
+          </div>
+
+          <label class="field">
+            <span>Scene / setting <small>(optional — appended to character)</small></span>
+            <input id="sceneInput" type="text" placeholder="e.g. beach at sunset, cozy café, rooftop cityscape…" />
+          </label>
+          <div class="preset-row" id="sceneChips"></div>
+
           <label class="field">
             <span>Prompt</span>
             <textarea id="prompt" rows="5" placeholder="Describe what you want to generate…"></textarea>
@@ -197,6 +244,19 @@
             <span>Negative prompt</span>
             <textarea id="negativePrompt" rows="3" placeholder="What to avoid…"></textarea>
           </label>
+
+          <div class="assistant-bar">
+            <span class="assistant-label">Local AI assistant</span>
+            <div class="assistant-actions">
+              <button id="enhancePromptBtn" class="btn ghost small assistant-btn" type="button">✨ Enhance prompt</button>
+              <button id="generateScenesBtn" class="btn ghost small assistant-btn" type="button">🎬 Scene ideas</button>
+              <button id="generateNegativeBtn" class="btn ghost small assistant-btn" type="button">🚫 Better negative</button>
+              <button id="applyAssistantBtn" class="btn ghost small assistant-btn" type="button">↓ Apply</button>
+              <button id="clearAssistantBtn" class="btn ghost small assistant-btn" type="button">×</button>
+            </div>
+          </div>
+          <div id="assistantOutput" class="assistant-output" hidden></div>
+
           <div class="prompt-actions">
             <button id="generateBtn" class="btn primary" type="button">
               <span class="btn-label">Generate</span>
@@ -229,8 +289,14 @@
               <li><strong>Text → Image / Image → Image</strong> — Forge or ComfyUI</li>
               <li><strong>Text → Video / Image → Video</strong> — ComfyUI + SVD model</li>
             </ul>
+            <p class="mobile-links" id="mobileLinks"></p>
           </div>
         </div>
+
+        <details class="history-section" id="historySection">
+          <summary>Generation history <span class="history-count" id="historyCount"></span></summary>
+          <div id="historyPanel" class="history-panel"></div>
+        </details>
       </section>
     </main>
   </div>
@@ -261,9 +327,186 @@
         <input id="saveToDisk" type="checkbox" />
         <span>Save outputs to <code>output/</code></span>
       </label>
+      <hr class="modal-divider" />
+      <h3 class="modal-subtitle">Local AI Assistant</h3>
+      <p class="hint modal-hint">Runs on your machine via Ollama — no cloud, no filtering. Install: <code>ollama pull llama3.2</code></p>
+      <label class="field inline">
+        <input id="assistantEnabled" type="checkbox" checked />
+        <span>Enable prompt assistant</span>
+      </label>
+      <label class="field">
+        <span>Provider</span>
+        <select id="assistantProvider">
+          <option value="ollama">Ollama (local)</option>
+          <option value="openai_compatible">OpenAI-compatible API</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>LLM URL</span>
+        <input id="assistantUrl" type="url" value="http://127.0.0.1:11434" />
+      </label>
+      <label class="field">
+        <span>Model</span>
+        <input id="assistantModel" type="text" value="llama3.2" placeholder="llama3.2, mistral, dolphin-mixtral…" />
+      </label>
+      <label class="field">
+        <span>API key <small>(OpenAI-compatible only)</small></span>
+        <input id="assistantApiKey" type="password" value="" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span>Temperature</span>
+        <input id="assistantTemperature" type="number" min="0" max="2" step="0.1" value="0.8" />
+      </label>
       <footer>
         <button class="btn ghost" value="cancel" type="submit">Close</button>
         <button id="saveSettingsBtn" class="btn primary" value="default" type="submit">Save</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="profileEditorDialog" class="modal modal-wide">
+    <form method="dialog" class="modal-content">
+      <header>
+        <h2 id="profileEditorTitle">New Character</h2>
+        <button class="icon-btn" value="cancel" type="submit">×</button>
+      </header>
+
+      <div class="profile-editor-grid">
+        <div class="profile-editor-col">
+          <h3 class="form-section-title">Identity</h3>
+          <input id="profileId" type="hidden" />
+          <label class="field">
+            <span>Name</span>
+            <input id="profileName" type="text" placeholder="e.g. Luna, Mia, Ava…" />
+          </label>
+          <label class="field">
+            <span>Personality / vibe</span>
+            <input id="profileVibe" type="text" placeholder="confident, playful, mysterious…" />
+          </label>
+          <label class="field">
+            <span>Art style</span>
+            <select id="profileStyle">
+              <option value="photorealistic">Photorealistic</option>
+              <option value="cinematic">Cinematic</option>
+              <option value="fashion photography">Fashion photography</option>
+              <option value="anime style">Anime</option>
+              <option value="digital art">Digital art</option>
+              <option value="oil painting">Oil painting</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Tags <small>(comma-separated)</small></span>
+            <input id="profileTags" type="text" placeholder="blonde, fitness, beach…" />
+          </label>
+
+          <h3 class="form-section-title">Appearance</h3>
+          <div class="grid-2">
+            <label class="field">
+              <span>Age range</span>
+              <input id="profileAge" type="text" value="young adult" />
+            </label>
+            <label class="field">
+              <span>Ethnicity</span>
+              <input id="profileEthnicity" type="text" placeholder="e.g. East Asian, Latina…" />
+            </label>
+          </div>
+          <div class="grid-2">
+            <label class="field">
+              <span>Hair</span>
+              <input id="profileHair" type="text" placeholder="long wavy blonde" />
+            </label>
+            <label class="field">
+              <span>Eyes</span>
+              <input id="profileEyes" type="text" placeholder="bright blue" />
+            </label>
+          </div>
+          <div class="grid-2">
+            <label class="field">
+              <span>Skin tone</span>
+              <input id="profileSkin" type="text" placeholder="fair, tan, olive…" />
+            </label>
+            <label class="field">
+              <span>Body type</span>
+              <input id="profileBody" type="text" placeholder="athletic, slim, curvy…" />
+            </label>
+          </div>
+          <label class="field">
+            <span>Distinctive features</span>
+            <input id="profileFeatures" type="text" placeholder="freckles, beauty mark, dimples…" />
+          </label>
+          <label class="field">
+            <span>Default outfit</span>
+            <input id="profileOutfit" type="text" placeholder="white sundress, leather jacket…" />
+          </label>
+
+          <h3 class="form-section-title">Reference image</h3>
+          <p class="hint">Used for img2img consistency — keeps the same face/body across scenes.</p>
+          <div class="ref-upload">
+            <div class="dropzone small-dropzone" id="profileRefDropzone">
+              <input id="profileRefInput" type="file" accept="image/*" hidden />
+              <div id="profileRefEmpty"><p>Drop reference photo or click</p></div>
+              <img id="profileRefPreview" alt="Reference" hidden />
+            </div>
+            <button id="clearProfileRefBtn" class="btn ghost small" type="button" hidden>Remove</button>
+          </div>
+        </div>
+
+        <div class="profile-editor-col">
+          <h3 class="form-section-title">Prompt &amp; generation</h3>
+          <label class="field">
+            <span>Extra prompt tags <small>(prepended)</small></span>
+            <textarea id="profilePrefix" rows="2" placeholder="Additional style or quality tags…"></textarea>
+          </label>
+          <label class="field">
+            <span>Auto-built appearance preview</span>
+            <div id="profilePromptPreview" class="prompt-preview"></div>
+          </label>
+          <label class="field">
+            <span>Negative prompt</span>
+            <textarea id="profileNegative" rows="2"></textarea>
+          </label>
+          <div class="grid-2">
+            <label class="field">
+              <span>Width</span>
+              <input id="profileWidth" type="number" value="1024" step="64" />
+            </label>
+            <label class="field">
+              <span>Height</span>
+              <input id="profileHeight" type="number" value="1024" step="64" />
+            </label>
+          </div>
+          <div class="grid-2">
+            <label class="field">
+              <span>Steps</span>
+              <input id="profileSteps" type="number" value="30" />
+            </label>
+            <label class="field">
+              <span>CFG</span>
+              <input id="profileCfg" type="number" value="7" step="0.5" />
+            </label>
+          </div>
+          <label class="field">
+            <span>Locked seed <small>(-1 = random)</small></span>
+            <input id="profileSeed" type="number" value="-1" />
+          </label>
+          <label class="field">
+            <span>Saved scene ideas <small>(one per line)</small></span>
+            <textarea id="profileSceneIdeas" rows="4" placeholder="beach at golden hour&#10;rainy city street at night"></textarea>
+          </label>
+          <label class="field">
+            <span>Notes</span>
+            <textarea id="profileNotes" rows="2" placeholder="Private notes about this character…"></textarea>
+          </label>
+        </div>
+      </div>
+
+      <footer>
+        <button id="duplicateProfileBtn" class="btn ghost" type="button" hidden>Duplicate</button>
+        <button id="deleteProfileBtn" class="btn ghost danger" type="button" hidden>Delete</button>
+        <div class="footer-right">
+          <button class="btn ghost" value="cancel" type="submit">Cancel</button>
+          <button id="saveProfileBtn" class="btn primary" value="default" type="submit">Save character</button>
+        </div>
       </footer>
     </form>
   </dialog>
@@ -276,6 +519,9 @@
   </dialog>
 
   <script src="/static/js/api.js"></script>
+  <script src="/static/js/ui.js"></script>
+  <script src="/static/js/profiles.js"></script>
+  <script src="/static/js/assistant.js"></script>
   <script src="/static/js/app.js"></script>
 </body>
 </html>

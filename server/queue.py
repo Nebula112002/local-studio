@@ -39,6 +39,7 @@ class BatchRequest:
     seed_mode: str = "increment"  # fixed, random, increment
     prompt_variations: list[str] = field(default_factory=list)
     use_variation_suffix: bool = True
+    variations_only: bool = False
 
 
 class JobQueue:
@@ -81,6 +82,17 @@ class JobQueue:
         base = request.base_params.prompt.strip()
         if not request.prompt_variations:
             return [base]
+        if request.variations_only:
+            prompts: list[str] = []
+            for variation in request.prompt_variations:
+                variation = variation.strip()
+                if not variation:
+                    continue
+                if request.use_variation_suffix:
+                    prompts.append(f"{base}, {variation}" if base else variation)
+                else:
+                    prompts.append(variation)
+            return prompts or [base]
         prompts = [base]
         for variation in request.prompt_variations:
             variation = variation.strip()

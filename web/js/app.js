@@ -163,9 +163,29 @@ function applyCapabilityHints() {
 }
 
 function getPayload() {
+  const profile = ProfileManager.getActive();
+  let prompt = els.prompt.value.trim();
+  const scene = document.getElementById("sceneInput")?.value?.trim() || "";
+
+  // If character is active and prompt doesn't already include appearance, merge
+  if (profile && scene && !prompt.includes(profile.hair || "___")) {
+    const appearance = profile.prompt_prefix || [
+      profile.age_range,
+      profile.ethnicity,
+      profile.hair && `${profile.hair} hair`,
+      profile.eyes && `${profile.eyes} eyes`,
+      profile.art_style,
+    ].filter(Boolean).join(", ");
+    if (appearance && !prompt.startsWith(appearance.slice(0, 20))) {
+      prompt = [appearance, scene, prompt].filter(Boolean).join(", ");
+    }
+  }
+
   return {
-    prompt: els.prompt.value.trim(),
+    prompt,
     negative_prompt: els.negativePrompt.value.trim(),
+    profile_id: ProfileManager.activeId || null,
+    profile_name: ProfileManager.getActive()?.name || null,
     mode: state.mode,
     width: Number(els.width.value),
     height: Number(els.height.value),
@@ -189,19 +209,16 @@ function getPayload() {
 function validateRequest() {
   const payload = getPayload();
   if (!payload.prompt && state.mode !== "img2video") {
-    alert("Enter a prompt first.");
+    Toast.warn("Enter a prompt first.");
     return false;
   }
   if ((state.mode === "img2img" || state.mode === "img2video") && !payload.init_image) {
-    alert("Add a source image for this mode.");
+    Toast.warn("Add a source image for this mode.");
     return false;
   }
   if ((state.mode === "txt2video" || state.mode === "img2video") && state.backend) {
     if (!state.backend.capabilities?.includes(state.mode)) {
-      alert(
-        "Video modes need ComfyUI with an SVD model (e.g. svd_xt).\n\n" +
-        "Launch ComfyUI in Stability Matrix, download an SVD checkpoint, then set backend to ComfyUI in Settings."
-      );
+      Toast.error("Video modes need ComfyUI with an SVD model (e.g. svd_xt).");
       return false;
     }
   }
@@ -270,12 +287,16 @@ function addMediaCard({ images = [], videos = [], seeds, prompt, label, status =
         <button class="btn ghost" type="button" data-action="download">Download</button>
         <button class="btn ghost" type="button" data-action="reuse">Reuse seed</button>
         <button class="btn ghost" type="button" data-action="animate">→ Video</button>
+        <button class="btn ghost" type="button" data-action="set-ref" title="Save as character reference">Ref</button>
+        <button class="btn ghost" type="button" data-action="set-thumb" title="Set character thumbnail">Thumb</button>
       </div>
     `;
     card.querySelector("img").addEventListener("click", () => openLightbox(img, null, seed, prompt, false));
     card.querySelector('[data-action="download"]').addEventListener("click", () => downloadImage(img, seed));
     card.querySelector('[data-action="reuse"]').addEventListener("click", () => reuseSeed(seed));
     card.querySelector('[data-action="animate"]').addEventListener("click", () => useAsVideoSource(img));
+    card.querySelector('[data-action="set-ref"]')?.addEventListener("click", () => ProfileManager.setReferenceFromImage(img));
+    card.querySelector('[data-action="set-thumb"]')?.addEventListener("click", () => ProfileManager.setThumbnailFromImage(img));
     els.gallery.prepend(card);
   });
 }
@@ -386,6 +407,12 @@ async function loadSettings() {
   els.comfyuiUrl.value = settings.comfyui_url;
   els.automatic1111Url.value = settings.automatic1111_url;
   els.saveToDisk.checked = settings.save_to_disk;
+  if ($("assistantEnabled")) $("assistantEnabled").checked = settings.assistant_enabled !== false;
+  if ($("assistantProvider")) $("assistantProvider").value = settings.assistant_provider || "ollama";
+  if ($("assistantUrl")) $("assistantUrl").value = settings.assistant_url || "http://127.0.0.1:11434";
+  if ($("assistantModel")) $("assistantModel").value = settings.assistant_model || "llama3.2";
+  if ($("assistantApiKey")) $("assistantApiKey").value = settings.assistant_api_key || "";
+  if ($("assistantTemperature")) $("assistantTemperature").value = settings.assistant_temperature ?? 0.8;
 }
 
 async function saveSettings(e) {
@@ -395,9 +422,16 @@ async function saveSettings(e) {
     comfyui_url: els.comfyuiUrl.value,
     automatic1111_url: els.automatic1111Url.value,
     save_to_disk: els.saveToDisk.checked,
+    assistant_enabled: $("assistantEnabled")?.checked ?? true,
+    assistant_provider: $("assistantProvider")?.value || "ollama",
+    assistant_url: $("assistantUrl")?.value || "http://127.0.0.1:11434",
+    assistant_model: $("assistantModel")?.value || "llama3.2",
+    assistant_api_key: $("assistantApiKey")?.value || "",
+    assistant_temperature: Number($("assistantTemperature")?.value) || 0.8,
   });
   els.settingsDialog.close();
   await refreshBackend();
+  await PromptAssistant.checkStatus();
 }
 
 function showGenStatus(show) {
@@ -461,6 +495,8 @@ async function generateOnce() {
       prompt: payload.prompt,
       mode: payload.mode,
     });
+    Toast.success(`${result.videos?.length ? "Video" : "Image"} generated`);
+    HistoryPanel.load();
     if (!els.lockSeed.checked) {
       els.seed.value = -1;
     } else if (result.seeds?.length) {
@@ -470,7 +506,7 @@ async function generateOnce() {
   } catch (err) {
     stopProgressPolling();
     showGenStatus(false);
-    alert(err.message || String(err));
+    Toast.error(err.message || String(err));
   } finally {
     setBusy(false);
   }
@@ -494,8 +530,9 @@ async function queueBatch() {
     els.queueBar.hidden = false;
     els.cancelBtn.hidden = false;
     startQueuePolling();
+    Toast.info(`Queued ${payload.batch_count} batch job(s)`);
   } catch (err) {
-    alert(err.message || String(err));
+    Toast.error(err.message || String(err));
   } finally {
     setBusy(false);
   }
@@ -588,7 +625,7 @@ function bindEvents() {
   document.querySelectorAll(".mode-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
       if (tab.classList.contains("disabled")) {
-        alert("This mode needs ComfyUI with an SVD video model. Use Settings to switch backend.");
+        Toast.warn("This mode needs ComfyUI with an SVD video model.");
         return;
       }
       setMode(tab.dataset.mode);
@@ -609,18 +646,37 @@ function bindEvents() {
   els.lightbox.addEventListener("click", (e) => {
     if (e.target === els.lightbox) els.lightbox.close();
   });
+
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      if (!els.generateBtn.disabled) generateOnce();
+    }
+  });
 }
 
 async function init() {
+  Toast.init();
   bindPresets();
   bindSourceImage();
   bindEvents();
+  ProfileManager.bindEvents();
+  PromptAssistant.bindEvents();
+  QualityPresets.bindEvents();
   updateSimilarityLabel();
   updateMotionLabel();
   setMode("txt2img");
   await loadSettings();
+  await AccessLinks.init();
   await refreshBackend();
+  await ProfileManager.load();
+  await QualityPresets.load();
+  await VideoPresets.load();
+  await SocialPresets.load();
+  await PromptAssistant.checkStatus();
+  await HistoryPanel.load();
   setInterval(refreshBackend, 15000);
+  setInterval(() => PromptAssistant.checkStatus(), 30000);
 }
 
 init();

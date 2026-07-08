@@ -15,8 +15,34 @@ from pydantic import BaseModel, Field
 from server.backends import Automatic1111Backend, ComfyUIBackend
 from server.paths import agent_output_dir
 from server.backends.base import BackendInfo, BaseBackend, GenerationParams, GenerationResult
-from server.hosts import service_urls
+from server.history import delete_history_item, list_history, record_generation, scan_output_files
+from server.hosts import LOCAL_URL, PORT, TAILNET_URL, service_urls
+from server.profile_assets import (
+    delete_assets,
+    get_reference_b64,
+    get_thumbnail_b64,
+    has_reference,
+    save_reference,
+    save_thumbnail,
+)
+from server.profile_templates import get_template, list_templates
+from server.presets import get_preset, list_presets, list_social_presets, list_video_presets
+from server.profiles import (
+    CharacterProfile,
+    create_profile,
+    delete_profile,
+    duplicate_profile,
+    get_profile,
+    list_profiles,
+    update_profile,
+)
 from server.progress import progress_state
+from server.prompt_assistant import (
+    AssistantSettings,
+    EnhanceRequest,
+    check_assistant_status,
+    run_assistant,
+)
 from server.queue import BatchRequest, JobQueue
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -29,7 +55,7 @@ DEFAULT_BACKENDS = {
     "automatic1111": "http://127.0.0.1:7860",
 }
 
-app = FastAPI(title="Local Studio", version="1.1.0")
+app = FastAPI(title="Local Studio", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -47,7 +73,14 @@ class SettingsModel(BaseModel):
     backend_type: str = "auto"
     comfyui_url: str = DEFAULT_BACKENDS["comfyui"]
     automatic1111_url: str = DEFAULT_BACKENDS["automatic1111"]
-    save_to_disk: bool = False
+    save_to_disk: bool = True
+    # Local LLM prompt assistant (Ollama or OpenAI-compatible)
+    assistant_enabled: bool = True
+    assistant_provider: str = "ollama"
+    assistant_url: str = "http://127.0.0.1:11434"
+    assistant_model: str = "llama3.2"
+    assistant_api_key: str = ""
+    assistant_temperature: float = 0.8
 
 
 class GenerateRequest(BaseModel):
@@ -70,6 +103,19 @@ class GenerateRequest(BaseModel):
     fps: int = Field(default=8, ge=1, le=60)
     video_model: str | None = None
     motion_bucket_id: int = Field(default=127, ge=1, le=255)
+    profile_id: str | None = None
+    profile_name: str | None = None
+
+
+class ImageUpload(BaseModel):
+    image: str  # base64
+
+
+class BatchScenesRequest(BaseModel):
+    profile_id: str
+    seed_mode: str = "increment"
+    mode: Literal["txt2img", "img2img"] = "txt2img"
+    use_reference: bool = True
 
 
 class BatchGenerateRequest(GenerateRequest):
@@ -135,6 +181,7 @@ async def _fetch_b64(url: str) -> str:
 async def _normalize_result(result: GenerationResult, params: GenerationParams) -> GenerationResult:
     images: list[str] = []
     videos: list[str] = []
+    saved_files: list[str] = []
 
     for image in result.images:
         images.append(await _fetch_b64(image) if image.startswith("http") else image)
@@ -142,15 +189,38 @@ async def _normalize_result(result: GenerationResult, params: GenerationParams) 
     for video in result.videos:
         videos.append(await _fetch_b64(video) if video.startswith("http") else video)
 
-    if load_settings().save_to_disk:
+    settings = load_settings()
+    if settings.save_to_disk:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         stamp = result.seeds[0] if result.seeds else params.seed
         for index, image_b64 in enumerate(images):
             filename = OUTPUT_DIR / f"{params.mode}_{stamp}_{index}.png"
             filename.write_bytes(base64.b64decode(image_b64))
+            saved_files.append(filename.name)
         for index, video_b64 in enumerate(videos):
             filename = OUTPUT_DIR / f"{params.mode}_{stamp}_{index}.mp4"
             filename.write_bytes(base64.b64decode(video_b64))
+            saved_files.append(filename.name)
+
+    # Always record generation history
+    extra = getattr(params, "_history_meta", {})
+    media_type = "video" if videos else "image"
+    record_generation(
+        mode=params.mode,
+        prompt=params.prompt,
+        negative_prompt=params.negative_prompt,
+        seeds=result.seeds,
+        width=params.width,
+        height=params.height,
+        steps=params.steps,
+        cfg_scale=params.cfg_scale,
+        sampler=params.sampler,
+        model=params.model,
+        files=saved_files,
+        media_type=media_type,
+        profile_id=extra.get("profile_id"),
+        profile_name=extra.get("profile_name"),
+    )
 
     return GenerationResult(images=images, videos=videos, seeds=result.seeds, metadata=result.metadata)
 
@@ -183,8 +253,40 @@ async def startup() -> None:
 
 
 @app.get("/api/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok", **service_urls()}
+async def health() -> dict[str, Any]:
+    backend_status: dict[str, Any] = {"connected": False}
+    try:
+        backend, backend_type = await get_backend()
+        info = await backend.get_info()
+        backend_status = {
+            "connected": True,
+            "type": backend_type,
+            "name": info.name,
+            "capabilities": info.capabilities,
+            "model_count": len(info.models),
+        }
+    except HTTPException:
+        pass
+
+    assistant_status = await check_assistant_status(_assistant_settings())
+
+    return {
+        "status": "ok",
+        "version": "2.0.0",
+        "port": PORT,
+        "local": LOCAL_URL,
+        "tailnet": TAILNET_URL,
+        "links": {
+            "local": LOCAL_URL,
+            "tailnet": TAILNET_URL,
+            "comfyui": load_settings().comfyui_url,
+            "automatic1111": load_settings().automatic1111_url,
+        },
+        "backend": backend_status,
+        "assistant": assistant_status,
+        "profiles_count": len(list_profiles()),
+        **service_urls(),
+    }
 
 
 @app.get("/api/progress")
@@ -233,7 +335,8 @@ async def backend_info() -> dict[str, Any]:
 
 @app.post("/api/generate")
 async def generate_once(request: GenerateRequest) -> dict[str, Any]:
-    params = GenerationParams(**request.model_dump())
+    params = GenerationParams(**request.model_dump(exclude={"profile_id", "profile_name"}))
+    params._history_meta = {"profile_id": request.profile_id, "profile_name": request.profile_name}  # type: ignore[attr-defined]
     try:
         result = await generate_with_backend(params)
     except RuntimeError as exc:
@@ -290,6 +393,224 @@ async def cancel_queue() -> dict[str, str]:
 async def clear_queue() -> dict[str, str]:
     queue.clear_completed()
     return {"status": "cleared"}
+
+
+def _assistant_settings() -> AssistantSettings:
+    s = load_settings()
+    return AssistantSettings(
+        enabled=s.assistant_enabled,
+        provider=s.assistant_provider,  # type: ignore[arg-type]
+        base_url=s.assistant_url,
+        model=s.assistant_model,
+        api_key=s.assistant_api_key,
+        temperature=s.assistant_temperature,
+    )
+
+
+@app.get("/api/presets")
+async def presets_list() -> dict[str, Any]:
+    return {"image": list_presets(), "video": list_video_presets(), "social": list_social_presets()}
+
+
+@app.get("/api/presets/{preset_id}")
+async def presets_get(preset_id: str) -> dict[str, Any]:
+    preset = get_preset(preset_id)
+    if not preset:
+        raise HTTPException(status_code=404, detail="Preset not found")
+    return preset
+
+
+@app.get("/api/profiles")
+async def profiles_list() -> list[dict[str, Any]]:
+    result = []
+    for p in list_profiles():
+        data = p.model_dump()
+        thumb = get_thumbnail_b64(p.id)
+        if thumb:
+            data["thumbnail"] = thumb
+        data["has_reference"] = has_reference(p.id)
+        result.append(data)
+    return result
+
+
+@app.get("/api/profiles/templates/list")
+async def profiles_templates() -> list[dict[str, Any]]:
+    return list_templates()
+
+
+@app.post("/api/profiles/templates/{template_id}")
+async def profiles_from_template(template_id: str) -> dict[str, Any]:
+    template = get_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    created = create_profile(template)
+    return created.model_dump()
+
+
+@app.post("/api/profiles")
+async def profiles_create(profile: CharacterProfile) -> dict[str, Any]:
+    created = create_profile(profile.model_dump(exclude_none=True))
+    return created.model_dump()
+
+
+@app.post("/api/profiles/{profile_id}/duplicate")
+async def profiles_duplicate(profile_id: str) -> dict[str, Any]:
+    dup = duplicate_profile(profile_id)
+    if not dup:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    ref = get_reference_b64(profile_id)
+    thumb = get_thumbnail_b64(profile_id)
+    if ref:
+        save_reference(dup.id, ref)
+    if thumb:
+        save_thumbnail(dup.id, thumb)
+    return dup.model_dump()
+
+
+@app.post("/api/profiles/{profile_id}/reference")
+async def profiles_set_reference(profile_id: str, body: ImageUpload) -> dict[str, str]:
+    if not get_profile(profile_id):
+        raise HTTPException(status_code=404, detail="Profile not found")
+    save_reference(profile_id, body.image)
+    return {"status": "saved"}
+
+
+@app.get("/api/profiles/{profile_id}/reference")
+async def profiles_get_reference(profile_id: str) -> dict[str, Any]:
+    if not get_profile(profile_id):
+        raise HTTPException(status_code=404, detail="Profile not found")
+    ref = get_reference_b64(profile_id)
+    if not ref:
+        raise HTTPException(status_code=404, detail="No reference image")
+    return {"image": ref}
+
+
+@app.post("/api/profiles/{profile_id}/thumbnail")
+async def profiles_set_thumbnail(profile_id: str, body: ImageUpload) -> dict[str, str]:
+    if not get_profile(profile_id):
+        raise HTTPException(status_code=404, detail="Profile not found")
+    save_thumbnail(profile_id, body.image)
+    return {"status": "saved"}
+
+
+@app.post("/api/profiles/batch-scenes")
+async def profiles_batch_scenes(request: BatchScenesRequest) -> dict[str, Any]:
+    profile = get_profile(request.profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    if not profile.scene_ideas:
+        raise HTTPException(status_code=400, detail="No saved scene ideas on this character")
+
+    defaults = profile.to_generation_defaults()
+    init_image = None
+    if request.use_reference and request.mode == "img2img":
+        init_image = get_reference_b64(request.profile_id)
+
+    base_params = GenerationParams(
+        prompt=defaults["prompt_prefix"],
+        negative_prompt=defaults["negative_prompt"],
+        mode=request.mode,
+        width=defaults["width"],
+        height=defaults["height"],
+        steps=defaults["steps"],
+        cfg_scale=defaults["cfg_scale"],
+        sampler=defaults["sampler"],
+        scheduler=defaults["scheduler"],
+        seed=defaults["seed"],
+        model=defaults["model"],
+        clip_skip=defaults["clip_skip"],
+        init_image=init_image,
+    )
+    base_params._history_meta = {"profile_id": profile.id, "profile_name": profile.name}  # type: ignore[attr-defined]
+
+    batch = BatchRequest(
+        base_params=base_params,
+        batch_count=1,
+        seed_mode=request.seed_mode,
+        prompt_variations=profile.scene_ideas,
+        use_variation_suffix=True,
+        variations_only=True,
+    )
+    job_ids = await queue.enqueue_batch(batch)
+    return {"job_ids": job_ids, "count": len(job_ids), "scenes": profile.scene_ideas}
+
+
+@app.get("/api/profiles/{profile_id}")
+async def profiles_get(profile_id: str) -> dict[str, Any]:
+    profile = get_profile(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return profile.model_dump()
+
+
+@app.put("/api/profiles/{profile_id}")
+async def profiles_update(profile_id: str, profile: CharacterProfile) -> dict[str, Any]:
+    updated = update_profile(profile_id, profile.model_dump(exclude={"id"}, exclude_none=True))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return updated.model_dump()
+
+
+@app.delete("/api/profiles/{profile_id}")
+async def profiles_delete(profile_id: str) -> dict[str, str]:
+    if not delete_profile(profile_id):
+        raise HTTPException(status_code=404, detail="Profile not found")
+    delete_assets(profile_id)
+    return {"status": "deleted"}
+
+
+@app.get("/api/profiles/{profile_id}/defaults")
+async def profiles_defaults(profile_id: str) -> dict[str, Any]:
+    profile = get_profile(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return profile.to_generation_defaults()
+
+
+@app.get("/api/assistant/status")
+async def assistant_status() -> dict[str, Any]:
+    return await check_assistant_status(_assistant_settings())
+
+
+@app.post("/api/assistant/enhance")
+async def assistant_enhance(request: EnhanceRequest) -> dict[str, Any]:
+    try:
+        return await run_assistant(_assistant_settings(), request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"LLM request failed: {exc}. Is Ollama running? Try: ollama pull {load_settings().assistant_model}",
+        ) from exc
+
+
+@app.get("/api/history")
+async def history_list(limit: int = 50, offset: int = 0) -> dict[str, Any]:
+    return list_history(limit=limit, offset=offset)
+
+
+@app.delete("/api/history/{item_id}")
+async def history_delete(item_id: str) -> dict[str, str]:
+    if not delete_history_item(item_id):
+        raise HTTPException(status_code=404, detail="History item not found")
+    return {"status": "deleted"}
+
+
+@app.get("/api/output")
+async def output_list() -> list[dict[str, Any]]:
+    return scan_output_files()
+
+
+@app.get("/api/output/{filename}")
+async def output_file(filename: str) -> FileResponse:
+    safe_name = Path(filename).name
+    path = OUTPUT_DIR / safe_name
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    media_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                   ".webp": "image/webp", ".mp4": "video/mp4", ".webm": "video/webm", ".gif": "image/gif"}
+    return FileResponse(path, media_type=media_types.get(path.suffix.lower(), "application/octet-stream"))
 
 
 @app.get("/")
