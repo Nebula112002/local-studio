@@ -1,6 +1,15 @@
-# Local Studio
+# Local Studio Pro
 
-A self-contained, **100% local** image generation UI. No cloud APIs, no prompt filtering, no account required. It talks directly to whatever Stable Diffusion backend you run on your machine — typically **ComfyUI** or **Forge / Automatic1111** launched through **Stability Matrix**.
+A premium, self-contained, **100% local** image and video generation studio. No cloud APIs, no prompt filtering, no account required. It talks directly to whatever Stable Diffusion backend you run on your machine — typically **ComfyUI** or **Forge / Automatic1111** launched through **Stability Matrix**.
+
+## Your links
+
+| Where | URL |
+|-------|-----|
+| **On this PC** | **http://127.0.0.1:8787** |
+| **Remote (Tailscale)** | **https://calebscomputer.tailfdadcb.ts.net:8787** |
+
+These links appear in the app header once Local Studio is running. Use the Tailscale link to access from your phone or another device on your tailnet.
 
 ## Quick start
 
@@ -10,13 +19,19 @@ A self-contained, **100% local** image generation UI. No cloud APIs, no prompt f
 
 2. **Launch Local Studio** (from this folder):
 
+   **Windows:**
    ```powershell
    .\start.ps1
    ```
 
-   Or double-click `start.bat`.
+   **Linux / macOS:**
+   ```bash
+   ./start.sh
+   ```
 
-3. Open **http://127.0.0.1:8787** in your browser.
+   Or double-click `start.bat` on Windows.
+
+3. Open **http://127.0.0.1:8787** in your browser (opens automatically on Linux/macOS).
 
 The UI auto-detects which backend is running. Use **Settings** to force a specific backend or change URLs.
 
@@ -50,7 +65,10 @@ Higher similarity = output stays closer to your source image. Lower = more creat
 - **Character profiles** — save reusable character definitions (hair, eyes, style, outfit, seed) for consistent generations across sessions
 - **Local AI prompt assistant** — enhance prompts, generate scene ideas, and write negative prompts via **Ollama** or any OpenAI-compatible local API (no cloud, no filtering)
 - **Quality presets** — one-click photorealistic, cinematic, portrait, fashion, anime, and artistic settings
-- **Gallery** — preview, lightbox, download, reuse seed
+- **Generation history** — every run is logged with prompt, seed, and settings; reuse any past generation in one click
+- **Video presets** — subtle, balanced, dynamic, and cinematic clip presets for SVD video
+- **Toast notifications** — clean feedback instead of popup alerts
+- **Keyboard shortcut** — `Ctrl+Enter` to generate
 - **Auto-save** — PNGs written to `output/` (toggle in Settings)
 - **Uncensored** — prompts pass through unchanged to your local model
 
@@ -64,11 +82,12 @@ Higher similarity = output stays closer to your source image. Lower = more creat
 
 ```
 Local-Studio/
-  start.ps1 / start.bat   # launch scripts
+  start.ps1 / start.bat / start.sh   # launch scripts
   requirements.txt
   server/                 # FastAPI backend + queue
   web/                    # frontend UI
   output/                 # saved images (created on first run)
+  profiles.json           # character profiles (created on first use)
 ```
 
 ## Stability Matrix tips

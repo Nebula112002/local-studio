@@ -184,6 +184,8 @@ function getPayload() {
   return {
     prompt,
     negative_prompt: els.negativePrompt.value.trim(),
+    profile_id: ProfileManager.activeId || null,
+    profile_name: ProfileManager.getActive()?.name || null,
     mode: state.mode,
     width: Number(els.width.value),
     height: Number(els.height.value),
@@ -207,19 +209,16 @@ function getPayload() {
 function validateRequest() {
   const payload = getPayload();
   if (!payload.prompt && state.mode !== "img2video") {
-    alert("Enter a prompt first.");
+    Toast.warn("Enter a prompt first.");
     return false;
   }
   if ((state.mode === "img2img" || state.mode === "img2video") && !payload.init_image) {
-    alert("Add a source image for this mode.");
+    Toast.warn("Add a source image for this mode.");
     return false;
   }
   if ((state.mode === "txt2video" || state.mode === "img2video") && state.backend) {
     if (!state.backend.capabilities?.includes(state.mode)) {
-      alert(
-        "Video modes need ComfyUI with an SVD model (e.g. svd_xt).\n\n" +
-        "Launch ComfyUI in Stability Matrix, download an SVD checkpoint, then set backend to ComfyUI in Settings."
-      );
+      Toast.error("Video modes need ComfyUI with an SVD model (e.g. svd_xt).");
       return false;
     }
   }
@@ -492,6 +491,8 @@ async function generateOnce() {
       prompt: payload.prompt,
       mode: payload.mode,
     });
+    Toast.success(`${result.videos?.length ? "Video" : "Image"} generated`);
+    HistoryPanel.load();
     if (!els.lockSeed.checked) {
       els.seed.value = -1;
     } else if (result.seeds?.length) {
@@ -501,7 +502,7 @@ async function generateOnce() {
   } catch (err) {
     stopProgressPolling();
     showGenStatus(false);
-    alert(err.message || String(err));
+    Toast.error(err.message || String(err));
   } finally {
     setBusy(false);
   }
@@ -525,8 +526,9 @@ async function queueBatch() {
     els.queueBar.hidden = false;
     els.cancelBtn.hidden = false;
     startQueuePolling();
+    Toast.info(`Queued ${payload.batch_count} batch job(s)`);
   } catch (err) {
-    alert(err.message || String(err));
+    Toast.error(err.message || String(err));
   } finally {
     setBusy(false);
   }
@@ -619,7 +621,7 @@ function bindEvents() {
   document.querySelectorAll(".mode-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
       if (tab.classList.contains("disabled")) {
-        alert("This mode needs ComfyUI with an SVD video model. Use Settings to switch backend.");
+        Toast.warn("This mode needs ComfyUI with an SVD video model.");
         return;
       }
       setMode(tab.dataset.mode);
@@ -640,9 +642,17 @@ function bindEvents() {
   els.lightbox.addEventListener("click", (e) => {
     if (e.target === els.lightbox) els.lightbox.close();
   });
+
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      if (!els.generateBtn.disabled) generateOnce();
+    }
+  });
 }
 
 async function init() {
+  Toast.init();
   bindPresets();
   bindSourceImage();
   bindEvents();
@@ -653,10 +663,13 @@ async function init() {
   updateMotionLabel();
   setMode("txt2img");
   await loadSettings();
+  await AccessLinks.init();
   await refreshBackend();
   await ProfileManager.load();
   await QualityPresets.load();
+  await VideoPresets.load();
   await PromptAssistant.checkStatus();
+  await HistoryPanel.load();
   setInterval(refreshBackend, 15000);
   setInterval(() => PromptAssistant.checkStatus(), 30000);
 }

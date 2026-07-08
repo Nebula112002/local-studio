@@ -96,6 +96,43 @@ QUALITY_PRESETS: dict[str, dict[str, Any]] = {
     },
 }
 
+VIDEO_PRESETS: dict[str, dict[str, Any]] = {
+    "subtle": {
+        "label": "Subtle motion",
+        "frames": 25,
+        "fps": 8,
+        "motion_bucket_id": 64,
+        "steps": 20,
+        "cfg_scale": 2.5,
+    },
+    "balanced": {
+        "label": "Balanced",
+        "frames": 25,
+        "fps": 8,
+        "motion_bucket_id": 127,
+        "steps": 25,
+        "cfg_scale": 3.0,
+    },
+    "dynamic": {
+        "label": "Dynamic",
+        "frames": 30,
+        "fps": 10,
+        "motion_bucket_id": 180,
+        "steps": 25,
+        "cfg_scale": 3.5,
+    },
+    "cinematic_clip": {
+        "label": "Cinematic clip",
+        "frames": 40,
+        "fps": 12,
+        "motion_bucket_id": 140,
+        "steps": 30,
+        "cfg_scale": 3.0,
+        "width": 1024,
+        "height": 576,
+    },
+}
+
 
 def list_presets() -> list[dict[str, Any]]:
     return [
@@ -104,8 +141,15 @@ def list_presets() -> list[dict[str, Any]]:
     ]
 
 
+def list_video_presets() -> list[dict[str, Any]]:
+    return [
+        {"id": key, **{k: v for k, v in preset.items()}}
+        for key, preset in VIDEO_PRESETS.items()
+    ]
+
+
 def get_preset(preset_id: str) -> dict[str, Any] | None:
-    preset = QUALITY_PRESETS.get(preset_id)
+    preset = QUALITY_PRESETS.get(preset_id) or VIDEO_PRESETS.get(preset_id)
     if not preset:
         return None
     return {"id": preset_id, **preset}

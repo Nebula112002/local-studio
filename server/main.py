@@ -15,8 +15,9 @@ from pydantic import BaseModel, Field
 from server.backends import Automatic1111Backend, ComfyUIBackend
 from server.paths import agent_output_dir
 from server.backends.base import BackendInfo, BaseBackend, GenerationParams, GenerationResult
-from server.hosts import service_urls
-from server.presets import get_preset, list_presets
+from server.history import delete_history_item, list_history, record_generation, scan_output_files
+from server.hosts import LOCAL_URL, PORT, TAILNET_URL, service_urls
+from server.presets import get_preset, list_presets, list_video_presets
 from server.profiles import (
     CharacterProfile,
     create_profile,
@@ -44,7 +45,7 @@ DEFAULT_BACKENDS = {
     "automatic1111": "http://127.0.0.1:7860",
 }
 
-app = FastAPI(title="Local Studio", version="1.1.0")
+app = FastAPI(title="Local Studio", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -92,6 +93,8 @@ class GenerateRequest(BaseModel):
     fps: int = Field(default=8, ge=1, le=60)
     video_model: str | None = None
     motion_bucket_id: int = Field(default=127, ge=1, le=255)
+    profile_id: str | None = None
+    profile_name: str | None = None
 
 
 class BatchGenerateRequest(GenerateRequest):
@@ -157,6 +160,7 @@ async def _fetch_b64(url: str) -> str:
 async def _normalize_result(result: GenerationResult, params: GenerationParams) -> GenerationResult:
     images: list[str] = []
     videos: list[str] = []
+    saved_files: list[str] = []
 
     for image in result.images:
         images.append(await _fetch_b64(image) if image.startswith("http") else image)
@@ -164,15 +168,38 @@ async def _normalize_result(result: GenerationResult, params: GenerationParams) 
     for video in result.videos:
         videos.append(await _fetch_b64(video) if video.startswith("http") else video)
 
-    if load_settings().save_to_disk:
+    settings = load_settings()
+    if settings.save_to_disk:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         stamp = result.seeds[0] if result.seeds else params.seed
         for index, image_b64 in enumerate(images):
             filename = OUTPUT_DIR / f"{params.mode}_{stamp}_{index}.png"
             filename.write_bytes(base64.b64decode(image_b64))
+            saved_files.append(filename.name)
         for index, video_b64 in enumerate(videos):
             filename = OUTPUT_DIR / f"{params.mode}_{stamp}_{index}.mp4"
             filename.write_bytes(base64.b64decode(video_b64))
+            saved_files.append(filename.name)
+
+    # Always record generation history
+    extra = getattr(params, "_history_meta", {})
+    media_type = "video" if videos else "image"
+    record_generation(
+        mode=params.mode,
+        prompt=params.prompt,
+        negative_prompt=params.negative_prompt,
+        seeds=result.seeds,
+        width=params.width,
+        height=params.height,
+        steps=params.steps,
+        cfg_scale=params.cfg_scale,
+        sampler=params.sampler,
+        model=params.model,
+        files=saved_files,
+        media_type=media_type,
+        profile_id=extra.get("profile_id"),
+        profile_name=extra.get("profile_name"),
+    )
 
     return GenerationResult(images=images, videos=videos, seeds=result.seeds, metadata=result.metadata)
 
@@ -205,8 +232,40 @@ async def startup() -> None:
 
 
 @app.get("/api/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok", **service_urls()}
+async def health() -> dict[str, Any]:
+    backend_status: dict[str, Any] = {"connected": False}
+    try:
+        backend, backend_type = await get_backend()
+        info = await backend.get_info()
+        backend_status = {
+            "connected": True,
+            "type": backend_type,
+            "name": info.name,
+            "capabilities": info.capabilities,
+            "model_count": len(info.models),
+        }
+    except HTTPException:
+        pass
+
+    assistant_status = await check_assistant_status(_assistant_settings())
+
+    return {
+        "status": "ok",
+        "version": "2.0.0",
+        "port": PORT,
+        "local": LOCAL_URL,
+        "tailnet": TAILNET_URL,
+        "links": {
+            "local": LOCAL_URL,
+            "tailnet": TAILNET_URL,
+            "comfyui": load_settings().comfyui_url,
+            "automatic1111": load_settings().automatic1111_url,
+        },
+        "backend": backend_status,
+        "assistant": assistant_status,
+        "profiles_count": len(list_profiles()),
+        **service_urls(),
+    }
 
 
 @app.get("/api/progress")
@@ -255,7 +314,8 @@ async def backend_info() -> dict[str, Any]:
 
 @app.post("/api/generate")
 async def generate_once(request: GenerateRequest) -> dict[str, Any]:
-    params = GenerationParams(**request.model_dump())
+    params = GenerationParams(**request.model_dump(exclude={"profile_id", "profile_name"}))
+    params._history_meta = {"profile_id": request.profile_id, "profile_name": request.profile_name}  # type: ignore[attr-defined]
     try:
         result = await generate_with_backend(params)
     except RuntimeError as exc:
@@ -327,8 +387,8 @@ def _assistant_settings() -> AssistantSettings:
 
 
 @app.get("/api/presets")
-async def presets_list() -> list[dict[str, Any]]:
-    return list_presets()
+async def presets_list() -> dict[str, Any]:
+    return {"image": list_presets(), "video": list_video_presets()}
 
 
 @app.get("/api/presets/{preset_id}")
@@ -397,6 +457,34 @@ async def assistant_enhance(request: EnhanceRequest) -> dict[str, Any]:
             status_code=503,
             detail=f"LLM request failed: {exc}. Is Ollama running? Try: ollama pull {load_settings().assistant_model}",
         ) from exc
+
+
+@app.get("/api/history")
+async def history_list(limit: int = 50, offset: int = 0) -> dict[str, Any]:
+    return list_history(limit=limit, offset=offset)
+
+
+@app.delete("/api/history/{item_id}")
+async def history_delete(item_id: str) -> dict[str, str]:
+    if not delete_history_item(item_id):
+        raise HTTPException(status_code=404, detail="History item not found")
+    return {"status": "deleted"}
+
+
+@app.get("/api/output")
+async def output_list() -> list[dict[str, Any]]:
+    return scan_output_files()
+
+
+@app.get("/api/output/{filename}")
+async def output_file(filename: str) -> FileResponse:
+    safe_name = Path(filename).name
+    path = OUTPUT_DIR / safe_name
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    media_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                   ".webp": "image/webp", ".mp4": "video/mp4", ".webm": "video/webm", ".gif": "image/gif"}
+    return FileResponse(path, media_type=media_types.get(path.suffix.lower(), "application/octet-stream"))
 
 
 @app.get("/")

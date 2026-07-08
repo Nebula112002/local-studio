@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Local Studio</title>
+  <meta name="description" content="Premium local AI image and video generation studio" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -15,11 +16,12 @@
       <div class="brand">
         <div class="brand-mark"></div>
         <div>
-          <h1>Local Studio</h1>
-          <p>100% local — no cloud — no filters</p>
+          <h1>Local Studio <span class="pro-badge">Pro</span></h1>
+          <p>Premium local image &amp; video generation</p>
         </div>
       </div>
       <div class="topbar-actions">
+        <div id="accessBar" class="access-bar"></div>
         <div id="backendStatus" class="status-pill disconnected">
           <span class="dot"></span>
           <span class="label">Detecting backend…</span>
@@ -94,6 +96,7 @@
             <input id="motionBucket" type="range" min="1" max="255" step="1" value="127" />
             <span id="motionLabel" class="hint">127 — balanced motion</span>
           </label>
+          <div class="preset-row" id="videoPresets"></div>
         </section>
 
         <section class="panel-section" id="dimensionsSection">
@@ -277,8 +280,14 @@
               <li><strong>Text → Image / Image → Image</strong> — Forge or ComfyUI</li>
               <li><strong>Text → Video / Image → Video</strong> — ComfyUI + SVD model</li>
             </ul>
+            <p class="mobile-links" id="mobileLinks"></p>
           </div>
         </div>
+
+        <details class="history-section" id="historySection">
+          <summary>Generation history <span class="history-count" id="historyCount"></span></summary>
+          <div id="historyPanel" class="history-panel"></div>
+        </details>
       </section>
     </main>
   </div>
@@ -489,6 +498,7 @@
   </dialog>
 
   <script src="/static/js/api.js"></script>
+  <script src="/static/js/ui.js"></script>
   <script src="/static/js/profiles.js"></script>
   <script src="/static/js/assistant.js"></script>
   <script src="/static/js/app.js"></script>

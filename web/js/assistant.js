@@ -148,7 +148,8 @@ const QualityPresets = {
   activeId: null,
 
   async load() {
-    this.presets = await API.get("/api/presets");
+    const data = await API.get("/api/presets");
+    this.presets = data.image || data;
     this.render();
   },
 

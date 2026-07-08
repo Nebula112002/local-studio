@@ -243,11 +243,11 @@ const ProfileManager = {
     document.getElementById("newProfileBtn")?.addEventListener("click", () => this.openEditor());
     document.getElementById("saveProfileBtn")?.addEventListener("click", (e) => {
       e.preventDefault();
-      this.save().catch((err) => alert(err.message));
+      this.save().catch((err) => Toast.error(err.message));
     });
     document.getElementById("deleteProfileBtn")?.addEventListener("click", (e) => {
       e.preventDefault();
-      this.remove().catch((err) => alert(err.message));
+      this.remove().catch((err) => Toast.error(err.message));
     });
     document.getElementById("profileSelect")?.addEventListener("change", (e) => {
       this.select(e.target.value || null);
