@@ -287,12 +287,16 @@ function addMediaCard({ images = [], videos = [], seeds, prompt, label, status =
         <button class="btn ghost" type="button" data-action="download">Download</button>
         <button class="btn ghost" type="button" data-action="reuse">Reuse seed</button>
         <button class="btn ghost" type="button" data-action="animate">→ Video</button>
+        <button class="btn ghost" type="button" data-action="set-ref" title="Save as character reference">Ref</button>
+        <button class="btn ghost" type="button" data-action="set-thumb" title="Set character thumbnail">Thumb</button>
       </div>
     `;
     card.querySelector("img").addEventListener("click", () => openLightbox(img, null, seed, prompt, false));
     card.querySelector('[data-action="download"]').addEventListener("click", () => downloadImage(img, seed));
     card.querySelector('[data-action="reuse"]').addEventListener("click", () => reuseSeed(seed));
     card.querySelector('[data-action="animate"]').addEventListener("click", () => useAsVideoSource(img));
+    card.querySelector('[data-action="set-ref"]')?.addEventListener("click", () => ProfileManager.setReferenceFromImage(img));
+    card.querySelector('[data-action="set-thumb"]')?.addEventListener("click", () => ProfileManager.setThumbnailFromImage(img));
     els.gallery.prepend(card);
   });
 }
@@ -668,6 +672,7 @@ async function init() {
   await ProfileManager.load();
   await QualityPresets.load();
   await VideoPresets.load();
+  await SocialPresets.load();
   await PromptAssistant.checkStatus();
   await HistoryPanel.load();
   setInterval(refreshBackend, 15000);

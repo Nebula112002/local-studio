@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 config.json
 profiles.json
+profile_assets/
 .env
 .env.*
 !.env.example

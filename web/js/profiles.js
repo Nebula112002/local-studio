@@ -8,7 +8,34 @@ const ProfileManager = {
     this.profiles = await API.get("/api/profiles");
     this.renderList();
     this.renderSelector();
+    this.renderSceneChips();
+    this.updateRefButton();
+    await this.loadTemplates();
     return this.profiles;
+  },
+
+  async loadTemplates() {
+    const row = document.getElementById("profileTemplates");
+    if (!row) return;
+    try {
+      const templates = await API.get("/api/profiles/templates/list");
+      row.innerHTML = '<span class="hint" style="margin-right:0.5rem">Quick start:</span>';
+      for (const t of templates) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "chip";
+        btn.textContent = t.name;
+        btn.addEventListener("click", () => this.createFromTemplate(t.template_id));
+        row.appendChild(btn);
+      }
+    } catch {}
+  },
+
+  async createFromTemplate(templateId) {
+    const created = await API.post(`/api/profiles/templates/${templateId}`, {});
+    Toast.success(`Created: ${created.name}`);
+    await this.load();
+    this.select(created.id);
   },
 
   getActive() {
@@ -102,6 +129,99 @@ const ProfileManager = {
     if (prefix) {
       this.applyPrompt(prefix, scene);
     }
+    this.renderSceneChips();
+    this.updateRefButton();
+  },
+
+  renderSceneChips() {
+    const row = document.getElementById("sceneChips");
+    if (!row) return;
+    const p = this.getActive();
+    row.innerHTML = "";
+    if (!p?.scene_ideas?.length) return;
+    for (const scene of p.scene_ideas) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "scene-chip";
+      chip.textContent = scene;
+      chip.addEventListener("click", () => {
+        document.getElementById("sceneInput").value = scene;
+        const defaults = p.prompt_prefix || this.buildAppearancePreview(p);
+        this.applyPrompt(defaults, scene);
+      });
+      row.appendChild(chip);
+    }
+  },
+
+  updateRefButton() {
+    const btn = document.getElementById("loadRefBtn");
+    const p = this.getActive();
+    if (!btn) return;
+    btn.hidden = !p?.has_reference;
+  },
+
+  async loadReference() {
+    if (!this.activeId) return;
+    try {
+      const data = await API.get(`/api/profiles/${this.activeId}/reference`);
+      if (typeof setSourceImage === "function") {
+        setSourceImage(data.image);
+        Toast.success("Reference image loaded — switch to Image→Image for consistency");
+      }
+    } catch (err) {
+      Toast.error(err.message);
+    }
+  },
+
+  async batchAllScenes() {
+    if (!this.activeId) {
+      Toast.warn("Select a character first");
+      return;
+    }
+    const p = this.getActive();
+    if (!p?.scene_ideas?.length) {
+      Toast.warn("No saved scenes — use Scene ideas or add scenes in character editor");
+      return;
+    }
+    try {
+      const mode = document.querySelector(".mode-tab.active")?.dataset?.mode === "img2img" ? "img2img" : "txt2img";
+      const result = await API.post("/api/profiles/batch-scenes", {
+        profile_id: this.activeId,
+        seed_mode: document.getElementById("seedMode")?.value || "increment",
+        mode,
+        use_reference: mode === "img2img",
+      });
+      document.getElementById("queueBar").hidden = false;
+      document.getElementById("cancelBtn").hidden = false;
+      if (typeof startQueuePolling === "function") startQueuePolling();
+      Toast.success(`Queued ${result.count} scenes for ${p.name}`);
+    } catch (err) {
+      Toast.error(err.message);
+    }
+  },
+
+  async setReferenceFromImage(b64) {
+    if (!this.activeId) {
+      Toast.warn("Select a character first");
+      return;
+    }
+    await API.post(`/api/profiles/${this.activeId}/reference`, { image: b64 });
+    const p = this.profiles.find((x) => x.id === this.activeId);
+    if (p) p.has_reference = true;
+    this.updateRefButton();
+    Toast.success("Saved as reference image");
+  },
+
+  async setThumbnailFromImage(b64) {
+    if (!this.activeId) {
+      Toast.warn("Select a character first");
+      return;
+    }
+    await API.post(`/api/profiles/${this.activeId}/thumbnail`, { image: b64 });
+    const p = this.profiles.find((x) => x.id === this.activeId);
+    if (p) p.thumbnail = b64;
+    this.renderList();
+    Toast.success("Set as character thumbnail");
   },
 
   applyPrompt(prefix, scene = "") {
@@ -180,7 +300,34 @@ const ProfileManager = {
     document.getElementById("profileNotes").value = profile?.notes || "";
     document.getElementById("profileEditorTitle").textContent = profile ? `Edit: ${profile.name}` : "New Character";
     document.getElementById("deleteProfileBtn").hidden = !profile;
+    document.getElementById("duplicateProfileBtn").hidden = !profile;
+    this._refB64 = null;
+    this.showRefPreview(profile?.has_reference ? "loading" : null);
+    if (profile?.has_reference && profile.id) {
+      API.get(`/api/profiles/${profile.id}/reference`).then((d) => {
+        this._refB64 = d.image;
+        this.showRefPreview(d.image);
+      }).catch(() => {});
+    }
     this.updatePreviewPrompt(profile);
+  },
+
+  showRefPreview(b64) {
+    const preview = document.getElementById("profileRefPreview");
+    const empty = document.getElementById("profileRefEmpty");
+    const clearBtn = document.getElementById("clearProfileRefBtn");
+    if (!preview) return;
+    if (!b64 || b64 === "loading") {
+      preview.hidden = b64 !== "loading";
+      if (b64 === "loading") preview.src = "";
+      empty.hidden = !!b64;
+      clearBtn.hidden = !b64 || b64 === "loading";
+      return;
+    }
+    preview.src = `data:image/png;base64,${b64}`;
+    preview.hidden = false;
+    empty.hidden = true;
+    clearBtn.hidden = false;
   },
 
   updatePreviewPrompt(profile) {
@@ -201,13 +348,28 @@ const ProfileManager = {
     const id = data.id;
     delete data.id;
 
+    let saved;
     if (id) {
-      await API.put(`/api/profiles/${id}`, { ...data, id });
+      saved = await API.put(`/api/profiles/${id}`, { ...data, id });
     } else {
-      await API.post("/api/profiles", data);
+      saved = await API.post("/api/profiles", data);
+    }
+    if (this._refB64) {
+      await API.post(`/api/profiles/${saved.id}/reference`, { image: this._refB64 });
     }
     document.getElementById("profileEditorDialog").close();
     await this.load();
+    Toast.success(`Saved ${saved.name}`);
+  },
+
+  async duplicate() {
+    const id = document.getElementById("profileId").value;
+    if (!id) return;
+    const dup = await API.post(`/api/profiles/${id}/duplicate`, {});
+    document.getElementById("profileEditorDialog").close();
+    await this.load();
+    this.select(dup.id);
+    Toast.success(`Duplicated as ${dup.name}`);
   },
 
   async remove() {
@@ -254,6 +416,28 @@ const ProfileManager = {
     });
     document.getElementById("applyProfileBtn")?.addEventListener("click", () => {
       if (this.activeId) this.select(this.activeId);
+    });
+    document.getElementById("batchScenesBtn")?.addEventListener("click", () => this.batchAllScenes());
+    document.getElementById("loadRefBtn")?.addEventListener("click", () => this.loadReference());
+    document.getElementById("duplicateProfileBtn")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      this.duplicate().catch((err) => Toast.error(err.message));
+    });
+
+    const refDrop = document.getElementById("profileRefDropzone");
+    const refInput = document.getElementById("profileRefInput");
+    refDrop?.addEventListener("click", () => refInput?.click());
+    refInput?.addEventListener("change", async () => {
+      const file = refInput.files?.[0];
+      if (!file) return;
+      const b64 = await readFileAsB64(file);
+      this._refB64 = b64;
+      this.showRefPreview(b64);
+    });
+    document.getElementById("clearProfileRefBtn")?.addEventListener("click", () => {
+      this._refB64 = null;
+      this.showRefPreview(null);
+      refInput.value = "";
     });
 
     // Live preview in editor

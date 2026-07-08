@@ -189,3 +189,41 @@ const VideoPresets = {
     Toast.success(`Applied: ${preset.label}`);
   },
 };
+
+/** Social / platform size presets */
+
+const SocialPresets = {
+  presets: [],
+
+  async load() {
+    try {
+      const data = await API.get("/api/presets");
+      this.presets = data.social || [];
+      this.render();
+    } catch {}
+  },
+
+  render() {
+    const row = document.getElementById("socialPresets");
+    if (!row) return;
+    row.innerHTML = "";
+    for (const p of this.presets) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip social-chip";
+      chip.textContent = p.label;
+      chip.title = p.description || `${p.width}×${p.height}`;
+      chip.addEventListener("click", () => this.apply(p));
+      row.appendChild(chip);
+    }
+  },
+
+  apply(preset) {
+    if (preset.width) document.getElementById("width").value = preset.width;
+    if (preset.height) document.getElementById("height").value = preset.height;
+    if (preset.steps) document.getElementById("steps").value = preset.steps;
+    if (preset.cfg_scale) document.getElementById("cfgScale").value = preset.cfg_scale;
+    document.querySelectorAll("#sizePresets .chip").forEach((c) => c.classList.remove("active"));
+    Toast.success(`${preset.label}: ${preset.width}×${preset.height}`);
+  },
+};

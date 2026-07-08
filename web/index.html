@@ -165,6 +165,7 @@
             <button id="newProfileBtn" class="btn ghost small" type="button">+ New</button>
           </div>
           <div id="profileList" class="profile-list"></div>
+          <div id="profileTemplates" class="template-row"></div>
         </section>
 
         <section class="panel-section" id="batchSection">
@@ -209,6 +210,8 @@
                 </select>
               </label>
               <button id="applyProfileBtn" class="btn ghost small" type="button">Apply</button>
+              <button id="batchScenesBtn" class="btn secondary small" type="button" title="Queue all saved scenes">Batch scenes</button>
+              <button id="loadRefBtn" class="btn ghost small" type="button" hidden title="Load reference image">Ref</button>
             </div>
             <div id="assistantStatus" class="status-pill disconnected assistant-pill">
               <span class="dot"></span>
@@ -222,10 +225,16 @@
             <input type="hidden" id="qualityPreset" data-active="" />
           </div>
 
+          <div class="preset-section">
+            <span class="preset-label">Social / platform size</span>
+            <div class="preset-row" id="socialPresets"></div>
+          </div>
+
           <label class="field">
             <span>Scene / setting <small>(optional — appended to character)</small></span>
             <input id="sceneInput" type="text" placeholder="e.g. beach at sunset, cozy café, rooftop cityscape…" />
           </label>
+          <div class="preset-row" id="sceneChips"></div>
 
           <label class="field">
             <span>Prompt</span>
@@ -429,6 +438,17 @@
             <span>Default outfit</span>
             <input id="profileOutfit" type="text" placeholder="white sundress, leather jacket…" />
           </label>
+
+          <h3 class="form-section-title">Reference image</h3>
+          <p class="hint">Used for img2img consistency — keeps the same face/body across scenes.</p>
+          <div class="ref-upload">
+            <div class="dropzone small-dropzone" id="profileRefDropzone">
+              <input id="profileRefInput" type="file" accept="image/*" hidden />
+              <div id="profileRefEmpty"><p>Drop reference photo or click</p></div>
+              <img id="profileRefPreview" alt="Reference" hidden />
+            </div>
+            <button id="clearProfileRefBtn" class="btn ghost small" type="button" hidden>Remove</button>
+          </div>
         </div>
 
         <div class="profile-editor-col">
@@ -481,6 +501,7 @@
       </div>
 
       <footer>
+        <button id="duplicateProfileBtn" class="btn ghost" type="button" hidden>Duplicate</button>
         <button id="deleteProfileBtn" class="btn ghost danger" type="button" hidden>Delete</button>
         <div class="footer-right">
           <button class="btn ghost" value="cancel" type="submit">Cancel</button>

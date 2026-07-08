@@ -149,7 +149,53 @@ def list_video_presets() -> list[dict[str, Any]]:
 
 
 def get_preset(preset_id: str) -> dict[str, Any] | None:
-    preset = QUALITY_PRESETS.get(preset_id) or VIDEO_PRESETS.get(preset_id)
+    preset = QUALITY_PRESETS.get(preset_id) or VIDEO_PRESETS.get(preset_id) or SOCIAL_PRESETS.get(preset_id)
     if not preset:
         return None
     return {"id": preset_id, **preset}
+
+
+SOCIAL_PRESETS: dict[str, dict[str, Any]] = {
+    "x_post": {
+        "label": "X / Twitter",
+        "description": "16:9 landscape post",
+        "width": 1200,
+        "height": 675,
+    },
+    "x_square": {
+        "label": "X Square",
+        "description": "1:1 square post",
+        "width": 1080,
+        "height": 1080,
+    },
+    "instagram_portrait": {
+        "label": "Instagram",
+        "description": "4:5 portrait feed",
+        "width": 1080,
+        "height": 1350,
+    },
+    "instagram_story": {
+        "label": "IG Story",
+        "description": "9:16 vertical story",
+        "width": 1080,
+        "height": 1920,
+    },
+    "tiktok": {
+        "label": "TikTok",
+        "description": "9:16 vertical video frame",
+        "width": 1080,
+        "height": 1920,
+    },
+    "onlyfans": {
+        "label": "Portrait HD",
+        "description": "2:3 portrait, high detail",
+        "width": 832,
+        "height": 1216,
+        "steps": 30,
+        "cfg_scale": 6.5,
+    },
+}
+
+
+def list_social_presets() -> list[dict[str, Any]]:
+    return [{"id": key, **{k: v for k, v in preset.items()}} for key, preset in SOCIAL_PRESETS.items()]

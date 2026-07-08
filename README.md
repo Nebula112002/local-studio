@@ -101,13 +101,17 @@ For uncensored results, use an uncensored checkpoint in Stability Matrix (e.g. r
 
 ## Character profiles
 
-Create characters in the left sidebar (**+ New**) with appearance traits, default outfit, art style, and generation preferences. Select a character from the dropdown to auto-fill prompts and settings.
+Create characters in the left sidebar (**+ New**) or use **Quick start** templates. Each profile stores appearance, scenes, reference image, and generation defaults.
 
-Each profile stores:
-- Appearance traits (hair, eyes, skin, body type, etc.)
-- Default negative prompt and quality settings
-- Locked seed for face/body consistency
-- Saved scene ideas
+### Power features
+- **Reference image** — upload a face/body reference for img2img consistency across scenes
+- **Batch scenes** — one click queues every saved scene for the active character
+- **Scene chips** — click saved scenes to instantly fill the prompt
+- **Social sizes** — X, Instagram, TikTok, portrait HD presets in one click
+- **Gallery actions** — save any output as character reference or thumbnail
+- **Templates** — Fitness, Glamour Editorial, Girl Next Door starters
+
+Select a character → **Apply** → **Batch scenes** to generate a full content set.
 
 ## Local AI prompt assistant
 

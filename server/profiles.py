@@ -155,3 +155,15 @@ def delete_profile(profile_id: str) -> bool:
         return False
     _save_raw(filtered)
     return True
+
+
+def duplicate_profile(profile_id: str) -> CharacterProfile | None:
+    original = get_profile(profile_id)
+    if not original:
+        return None
+    data = original.model_dump()
+    data["id"] = str(uuid.uuid4())[:8]
+    data["name"] = f"{original.name} (copy)"
+    data["created_at"] = datetime.now(timezone.utc).isoformat()
+    data["updated_at"] = data["created_at"]
+    return create_profile(data)

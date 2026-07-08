@@ -599,7 +599,16 @@ input[type="range"] {
 .profile-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
 .profile-info strong { font-size: 0.82rem; }
 .profile-info span { font-size: 0.72rem; color: var(--text-dim); }
-.profile-item-actions { display: flex; gap: 0.3rem; }
+.template-row { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-top: 0.5rem; }
+.social-chip { border-color: rgba(56, 189, 248, 0.3); }
+.social-chip:hover { border-color: var(--accent-2); }
+
+.ref-upload { margin-bottom: 0.75rem; }
+.small-dropzone { min-height: 100px; }
+.small-dropzone img { max-height: 120px; }
+
+.card-actions { flex-wrap: wrap; }
+.card-actions .btn { min-width: 0; flex: 1 1 40%; }
 
 /* Prompt toolbar */
 .prompt-toolbar {

@@ -17,11 +17,21 @@ from server.paths import agent_output_dir
 from server.backends.base import BackendInfo, BaseBackend, GenerationParams, GenerationResult
 from server.history import delete_history_item, list_history, record_generation, scan_output_files
 from server.hosts import LOCAL_URL, PORT, TAILNET_URL, service_urls
-from server.presets import get_preset, list_presets, list_video_presets
+from server.profile_assets import (
+    delete_assets,
+    get_reference_b64,
+    get_thumbnail_b64,
+    has_reference,
+    save_reference,
+    save_thumbnail,
+)
+from server.profile_templates import get_template, list_templates
+from server.presets import get_preset, list_presets, list_social_presets, list_video_presets
 from server.profiles import (
     CharacterProfile,
     create_profile,
     delete_profile,
+    duplicate_profile,
     get_profile,
     list_profiles,
     update_profile,
@@ -63,7 +73,7 @@ class SettingsModel(BaseModel):
     backend_type: str = "auto"
     comfyui_url: str = DEFAULT_BACKENDS["comfyui"]
     automatic1111_url: str = DEFAULT_BACKENDS["automatic1111"]
-    save_to_disk: bool = False
+    save_to_disk: bool = True
     # Local LLM prompt assistant (Ollama or OpenAI-compatible)
     assistant_enabled: bool = True
     assistant_provider: str = "ollama"
@@ -95,6 +105,17 @@ class GenerateRequest(BaseModel):
     motion_bucket_id: int = Field(default=127, ge=1, le=255)
     profile_id: str | None = None
     profile_name: str | None = None
+
+
+class ImageUpload(BaseModel):
+    image: str  # base64
+
+
+class BatchScenesRequest(BaseModel):
+    profile_id: str
+    seed_mode: str = "increment"
+    mode: Literal["txt2img", "img2img"] = "txt2img"
+    use_reference: bool = True
 
 
 class BatchGenerateRequest(GenerateRequest):
@@ -388,7 +409,7 @@ def _assistant_settings() -> AssistantSettings:
 
 @app.get("/api/presets")
 async def presets_list() -> dict[str, Any]:
-    return {"image": list_presets(), "video": list_video_presets()}
+    return {"image": list_presets(), "video": list_video_presets(), "social": list_social_presets()}
 
 
 @app.get("/api/presets/{preset_id}")
@@ -401,13 +422,117 @@ async def presets_get(preset_id: str) -> dict[str, Any]:
 
 @app.get("/api/profiles")
 async def profiles_list() -> list[dict[str, Any]]:
-    return [p.model_dump() for p in list_profiles()]
+    result = []
+    for p in list_profiles():
+        data = p.model_dump()
+        thumb = get_thumbnail_b64(p.id)
+        if thumb:
+            data["thumbnail"] = thumb
+        data["has_reference"] = has_reference(p.id)
+        result.append(data)
+    return result
+
+
+@app.get("/api/profiles/templates/list")
+async def profiles_templates() -> list[dict[str, Any]]:
+    return list_templates()
+
+
+@app.post("/api/profiles/templates/{template_id}")
+async def profiles_from_template(template_id: str) -> dict[str, Any]:
+    template = get_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    created = create_profile(template)
+    return created.model_dump()
 
 
 @app.post("/api/profiles")
 async def profiles_create(profile: CharacterProfile) -> dict[str, Any]:
     created = create_profile(profile.model_dump(exclude_none=True))
     return created.model_dump()
+
+
+@app.post("/api/profiles/{profile_id}/duplicate")
+async def profiles_duplicate(profile_id: str) -> dict[str, Any]:
+    dup = duplicate_profile(profile_id)
+    if not dup:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    ref = get_reference_b64(profile_id)
+    thumb = get_thumbnail_b64(profile_id)
+    if ref:
+        save_reference(dup.id, ref)
+    if thumb:
+        save_thumbnail(dup.id, thumb)
+    return dup.model_dump()
+
+
+@app.post("/api/profiles/{profile_id}/reference")
+async def profiles_set_reference(profile_id: str, body: ImageUpload) -> dict[str, str]:
+    if not get_profile(profile_id):
+        raise HTTPException(status_code=404, detail="Profile not found")
+    save_reference(profile_id, body.image)
+    return {"status": "saved"}
+
+
+@app.get("/api/profiles/{profile_id}/reference")
+async def profiles_get_reference(profile_id: str) -> dict[str, Any]:
+    if not get_profile(profile_id):
+        raise HTTPException(status_code=404, detail="Profile not found")
+    ref = get_reference_b64(profile_id)
+    if not ref:
+        raise HTTPException(status_code=404, detail="No reference image")
+    return {"image": ref}
+
+
+@app.post("/api/profiles/{profile_id}/thumbnail")
+async def profiles_set_thumbnail(profile_id: str, body: ImageUpload) -> dict[str, str]:
+    if not get_profile(profile_id):
+        raise HTTPException(status_code=404, detail="Profile not found")
+    save_thumbnail(profile_id, body.image)
+    return {"status": "saved"}
+
+
+@app.post("/api/profiles/batch-scenes")
+async def profiles_batch_scenes(request: BatchScenesRequest) -> dict[str, Any]:
+    profile = get_profile(request.profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    if not profile.scene_ideas:
+        raise HTTPException(status_code=400, detail="No saved scene ideas on this character")
+
+    defaults = profile.to_generation_defaults()
+    init_image = None
+    if request.use_reference and request.mode == "img2img":
+        init_image = get_reference_b64(request.profile_id)
+
+    base_params = GenerationParams(
+        prompt=defaults["prompt_prefix"],
+        negative_prompt=defaults["negative_prompt"],
+        mode=request.mode,
+        width=defaults["width"],
+        height=defaults["height"],
+        steps=defaults["steps"],
+        cfg_scale=defaults["cfg_scale"],
+        sampler=defaults["sampler"],
+        scheduler=defaults["scheduler"],
+        seed=defaults["seed"],
+        model=defaults["model"],
+        clip_skip=defaults["clip_skip"],
+        init_image=init_image,
+    )
+    base_params._history_meta = {"profile_id": profile.id, "profile_name": profile.name}  # type: ignore[attr-defined]
+
+    batch = BatchRequest(
+        base_params=base_params,
+        batch_count=1,
+        seed_mode=request.seed_mode,
+        prompt_variations=profile.scene_ideas,
+        use_variation_suffix=True,
+        variations_only=True,
+    )
+    job_ids = await queue.enqueue_batch(batch)
+    return {"job_ids": job_ids, "count": len(job_ids), "scenes": profile.scene_ideas}
 
 
 @app.get("/api/profiles/{profile_id}")
@@ -430,6 +555,7 @@ async def profiles_update(profile_id: str, profile: CharacterProfile) -> dict[st
 async def profiles_delete(profile_id: str) -> dict[str, str]:
     if not delete_profile(profile_id):
         raise HTTPException(status_code=404, detail="Profile not found")
+    delete_assets(profile_id)
     return {"status": "deleted"}
 
 
