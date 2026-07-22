@@ -12,10 +12,12 @@ if (-not $env:LOCAL_STUDIO_OUTPUT_DIR) {
 }
 
 $Port = if ($env:LOCAL_STUDIO_PORT) { [int]$env:LOCAL_STUDIO_PORT } else { 8787 }
+$PublicPort = if ($env:LOCAL_STUDIO_PUBLIC_PORT) { [int]$env:LOCAL_STUDIO_PUBLIC_PORT } else { 8787 }
 $Python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 $LockFile = Join-Path $PSScriptRoot ".local-studio.lock"
 $LogFile = Join-Path $PSScriptRoot "local-studio.log"
-$TailnetUrl = "https://calebscomputer.tailfdadcb.ts.net:$Port"
+$LocalUrl = "http://127.0.0.1:$PublicPort"
+$TailnetUrl = "https://calebscomputer.tailfdadcb.ts.net:$PublicPort"
 $Quiet = $Autostart -or ($env:LOCAL_STUDIO_AUTOSTART -eq "1")
 
 function Write-Log([string]$Message, [string]$Color = "") {
@@ -45,6 +47,7 @@ if (Test-Path $LockFile) {
 if (Test-Listening) {
     Write-Log "Local Studio is already running on http://127.0.0.1:$Port"
     if (-not $Quiet) {
+        Write-Host "Open: $LocalUrl" -ForegroundColor Green
         Write-Host "Tailnet: $TailnetUrl" -ForegroundColor Cyan
         Write-Host "Outputs: $env:LOCAL_STUDIO_OUTPUT_DIR" -ForegroundColor DarkGray
         Write-Host "ComfyUI is manual-only - start it from Stability Matrix when you want to generate." -ForegroundColor Yellow
@@ -77,8 +80,11 @@ try {
     if ($useReload) { $uvicornArgs += '--reload' }
 
     Write-Log ""
-    Write-Log "Open http://127.0.0.1:$Port in your browser" "Green"
+    Write-Log "Open $LocalUrl in your browser" "Green"
     Write-Log "Tailnet: $TailnetUrl" "Cyan"
+    if ($Port -ne $PublicPort) {
+        Write-Log "Backend bind: 127.0.0.1:$Port (proxied to public :$PublicPort)" "DarkGray"
+    }
     Write-Log "ComfyUI is not auto-started. Launch it manually from Stability Matrix > Packages when ready." "Yellow"
     Write-Log ""
 
