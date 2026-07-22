@@ -202,18 +202,17 @@ async def _normalize_result(result: GenerationResult, params: GenerationParams) 
     for video in result.videos:
         videos.append(await _fetch_b64(video) if video.startswith("http") else video)
 
-    settings = load_settings()
-    if settings.save_to_disk:
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        stamp = result.seeds[0] if result.seeds else params.seed
-        for index, image_b64 in enumerate(images):
-            filename = OUTPUT_DIR / f"{params.mode}_{stamp}_{index}.png"
-            filename.write_bytes(base64.b64decode(image_b64))
-            saved_files.append(filename.name)
-        for index, video_b64 in enumerate(videos):
-            filename = OUTPUT_DIR / f"{params.mode}_{stamp}_{index}.mp4"
-            filename.write_bytes(base64.b64decode(video_b64))
-            saved_files.append(filename.name)
+    # Always persist media so History can show thumbnails (and Delete can remove files).
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = result.seeds[0] if result.seeds else params.seed
+    for index, image_b64 in enumerate(images):
+        filename = OUTPUT_DIR / f"{params.mode}_{stamp}_{index}.png"
+        filename.write_bytes(base64.b64decode(image_b64))
+        saved_files.append(filename.name)
+    for index, video_b64 in enumerate(videos):
+        filename = OUTPUT_DIR / f"{params.mode}_{stamp}_{index}.mp4"
+        filename.write_bytes(base64.b64decode(video_b64))
+        saved_files.append(filename.name)
 
     # Always record generation history
     extra = getattr(params, "_history_meta", {})
