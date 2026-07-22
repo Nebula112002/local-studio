@@ -235,7 +235,12 @@ async def _normalize_result(result: GenerationResult, params: GenerationParams) 
         profile_name=extra.get("profile_name"),
     )
 
-    return GenerationResult(images=images, videos=videos, seeds=result.seeds, metadata=result.metadata)
+    return GenerationResult(
+        images=images,
+        videos=videos,
+        seeds=result.seeds,
+        metadata={**(result.metadata or {}), "files": saved_files},
+    )
 
 
 async def generate_with_backend(params: GenerationParams) -> GenerationResult:
@@ -689,6 +694,37 @@ async def history_delete(item_id: str) -> dict[str, Any]:
 @app.get("/api/output")
 async def output_list() -> list[dict[str, Any]]:
     return scan_output_files()
+
+
+@app.delete("/api/output/{filename}")
+async def output_delete(filename: str) -> dict[str, Any]:
+    safe_name = Path(filename).name
+    path = (OUTPUT_DIR / safe_name).resolve()
+    try:
+        path.relative_to(OUTPUT_DIR.resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid filename") from exc
+    removed = 0
+    if path.is_file():
+        path.unlink()
+        removed = 1
+
+    # Drop history rows that only referenced this file (or scrub the file from lists).
+    from server.history import _load_index, _save_index
+
+    index = _load_index()
+    next_index = []
+    for entry in index:
+        files = [f for f in (entry.get("files") or []) if Path(str(f)).name != safe_name]
+        if not files and entry.get("files"):
+            continue
+        entry = {**entry, "files": files}
+        next_index.append(entry)
+    _save_index(next_index)
+
+    if removed == 0:
+        raise HTTPException(status_code=404, detail="File not found")
+    return {"status": "deleted", "filename": safe_name, "files_removed": removed}
 
 
 @app.get("/api/output/{filename}")
