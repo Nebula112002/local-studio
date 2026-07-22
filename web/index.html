@@ -299,6 +299,19 @@
 
         <details class="history-section" id="historySection" open>
           <summary>History <span class="history-count" id="historyCount"></span></summary>
+          <div class="history-toolbar">
+            <label class="history-clear-label">
+              <span>Clear</span>
+              <select id="historyClearRange">
+                <option value="1">Past hour</option>
+                <option value="12">Past 12 hours</option>
+                <option value="24">Past day</option>
+                <option value="168">Past week</option>
+                <option value="all">Everything</option>
+              </select>
+            </label>
+            <button id="historyClearBtn" class="btn ghost small danger" type="button">Delete batch</button>
+          </div>
           <div id="historyPanel" class="history-panel"></div>
         </details>
       </section>

@@ -793,6 +793,7 @@ async function init() {
   bindSourceImage();
   bindEvents();
   ProfileManager.bindEvents();
+  HistoryPanel.bindEvents();
   PromptAssistant.bindEvents();
   QualityPresets.bindEvents();
   updateSimilarityLabel();
