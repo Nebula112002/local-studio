@@ -275,9 +275,55 @@ const HistoryPanel = {
       const n = result.files_removed ?? result.deleted_files?.length ?? 0;
       Toast.success(n ? `Deleted ${n} file${n === 1 ? "" : "s"} from disk` : "Deleted from history");
       await this.load();
+      if (typeof loadGalleryFromDisk === "function") {
+        document.getElementById("gallery").innerHTML = "";
+        await loadGalleryFromDisk();
+      }
     } catch (err) {
       Toast.error(err.message || "Delete failed");
     }
+  },
+
+  async clearBatch() {
+    const select = document.getElementById("historyClearRange");
+    const value = select?.value || "1";
+    const clearAll = value === "all";
+    const hours = clearAll ? null : Number(value);
+    const label = clearAll
+      ? "ALL history and images"
+      : hours === 1
+        ? "the past hour"
+        : hours === 12
+          ? "the past 12 hours"
+          : hours === 24
+            ? "the past day"
+            : `the past ${hours} hours`;
+
+    if (!window.confirm(`Delete ${label} from this device? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const result = await API.post("/api/history/clear", {
+        clear_all: clearAll,
+        within_hours: hours,
+      });
+      const entries = result.removed_entries ?? 0;
+      const files = result.files_removed ?? 0;
+      Toast.success(`Removed ${entries} history item${entries === 1 ? "" : "s"}, ${files} file${files === 1 ? "" : "s"}`);
+      await this.load();
+      const gallery = document.getElementById("gallery");
+      if (gallery) gallery.innerHTML = "";
+      if (typeof loadGalleryFromDisk === "function") {
+        await loadGalleryFromDisk();
+      }
+    } catch (err) {
+      Toast.error(err.message || "Clear failed");
+    }
+  },
+
+  bindEvents() {
+    document.getElementById("historyClearBtn")?.addEventListener("click", () => this.clearBatch());
   },
 };
 

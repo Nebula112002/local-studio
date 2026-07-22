@@ -105,10 +105,31 @@ def delete_history_item(item_id: str) -> dict[str, Any] | None:
     if entry is None:
         return None
 
+    deleted_files = _delete_entry_files(entry)
+    _save_index(filtered)
+    return {
+        "id": item_id,
+        "deleted_files": deleted_files,
+        "files_removed": len(deleted_files),
+    }
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        ts = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts.astimezone(timezone.utc)
+
+
+def _delete_entry_files(entry: dict[str, Any]) -> list[str]:
     out = _output_dir().resolve()
     deleted_files: list[str] = []
     for name in entry.get("files") or []:
-        # Only allow basenames inside the output directory.
         candidate = (out / Path(str(name)).name).resolve()
         try:
             candidate.relative_to(out)
@@ -117,12 +138,70 @@ def delete_history_item(item_id: str) -> dict[str, Any] | None:
         if candidate.is_file():
             candidate.unlink()
             deleted_files.append(candidate.name)
+    return deleted_files
 
-    _save_index(filtered)
+
+def delete_history_bulk(*, within_hours: float | None = None, clear_all: bool = False) -> dict[str, Any]:
+    """Delete history entries (and their files).
+
+    within_hours: remove entries created in the last N hours.
+    clear_all: wipe the full history index and all media in the output folder.
+    """
+    if not clear_all and within_hours is None:
+        raise ValueError("Provide within_hours or clear_all")
+    if within_hours is not None and within_hours <= 0:
+        raise ValueError("within_hours must be positive")
+
+    index = _load_index()
+    now = datetime.now(timezone.utc)
+    keep: list[dict[str, Any]] = []
+    removed_entries = 0
+    deleted_files: list[str] = []
+
+    if clear_all:
+        for entry in index:
+            deleted_files.extend(_delete_entry_files(entry))
+            removed_entries += 1
+        # Also wipe orphan media left in the output folder.
+        out = _output_dir()
+        for path in out.iterdir():
+            if not path.is_file():
+                continue
+            if path.name == HISTORY_INDEX or path.suffix.lower() == ".json":
+                continue
+            if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".webm"}:
+                try:
+                    path.unlink()
+                    if path.name not in deleted_files:
+                        deleted_files.append(path.name)
+                except OSError:
+                    pass
+        _save_index([])
+        return {
+            "removed_entries": removed_entries,
+            "files_removed": len(deleted_files),
+            "deleted_files": deleted_files,
+            "clear_all": True,
+        }
+
+    cutoff = now.timestamp() - (within_hours * 3600)
+    for entry in index:
+        ts = _parse_timestamp(entry.get("timestamp"))
+        # If timestamp is missing/unparseable, treat as recent so bulk clear still catches it.
+        entry_ts = ts.timestamp() if ts else now.timestamp()
+        if entry_ts >= cutoff:
+            deleted_files.extend(_delete_entry_files(entry))
+            removed_entries += 1
+        else:
+            keep.append(entry)
+
+    _save_index(keep)
     return {
-        "id": item_id,
-        "deleted_files": deleted_files,
+        "removed_entries": removed_entries,
         "files_removed": len(deleted_files),
+        "deleted_files": deleted_files,
+        "within_hours": within_hours,
+        "remaining": len(keep),
     }
 
 

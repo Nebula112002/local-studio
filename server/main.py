@@ -15,7 +15,13 @@ from pydantic import BaseModel, Field
 from server.backends import Automatic1111Backend, ComfyUIBackend
 from server.paths import agent_output_dir
 from server.backends.base import BackendInfo, BaseBackend, GenerationParams, GenerationResult
-from server.history import delete_history_item, list_history, record_generation, scan_output_files
+from server.history import (
+    delete_history_bulk,
+    delete_history_item,
+    list_history,
+    record_generation,
+    scan_output_files,
+)
 from server.hosts import LOCAL_URL, PORT, TAILNET_URL, service_urls
 from server.profile_assets import (
     delete_assets,
@@ -680,6 +686,25 @@ async def assistant_enhance(request: EnhanceRequest) -> dict[str, Any]:
 @app.get("/api/history")
 async def history_list(limit: int = 50, offset: int = 0) -> dict[str, Any]:
     return list_history(limit=limit, offset=offset)
+
+
+class ClearHistoryRequest(BaseModel):
+    within_hours: float | None = Field(default=None, gt=0, le=24 * 365)
+    clear_all: bool = False
+
+
+@app.post("/api/history/clear")
+async def history_clear(request: ClearHistoryRequest) -> dict[str, Any]:
+    if not request.clear_all and request.within_hours is None:
+        raise HTTPException(status_code=400, detail="Choose within_hours or clear_all")
+    try:
+        result = delete_history_bulk(
+            within_hours=None if request.clear_all else request.within_hours,
+            clear_all=request.clear_all,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "cleared", **result}
 
 
 @app.delete("/api/history/{item_id}")
