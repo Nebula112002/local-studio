@@ -178,27 +178,81 @@ const HistoryPanel = {
       return;
     }
 
-    panel.innerHTML = this.items.map((item) => `
+    panel.innerHTML = this.items.map((item) => {
+      const files = item.files || [];
+      const images = files.filter((f) => /\.(png|jpe?g|webp|gif)$/i.test(f));
+      const videos = files.filter((f) => /\.(mp4|webm)$/i.test(f));
+      const mediaHtml = (images.length || videos.length)
+        ? `<div class="history-media">
+            ${images.map((f) => `
+              <button type="button" class="history-thumb" data-action="open-image" data-file="${f}" title="Open image">
+                <img src="/api/output/${encodeURIComponent(f)}" alt="" loading="lazy" />
+              </button>`).join("")}
+            ${videos.map((f) => `
+              <button type="button" class="history-thumb history-thumb-video" data-action="open-video" data-file="${f}" title="Open video">
+                <video src="/api/output/${encodeURIComponent(f)}" muted preload="metadata"></video>
+              </button>`).join("")}
+          </div>`
+        : `<div class="history-media history-media-empty" title="No image saved for this run"><span>No image</span></div>`;
+
+      return `
       <div class="history-item" data-id="${item.id}">
-        <div class="history-meta">
-          <span class="history-mode">${item.mode}</span>
-          <span class="history-seed">Seed ${item.seeds?.[0] ?? "?"}</span>
-          ${item.profile_name ? `<span class="history-profile">${item.profile_name}</span>` : ""}
-          ${item.files?.length ? `<span class="history-files">${item.files.length} file${item.files.length === 1 ? "" : "s"}</span>` : ""}
+        ${mediaHtml}
+        <div class="history-body">
+          <div class="history-meta">
+            <span class="history-mode">${item.mode}</span>
+            <span class="history-seed">Seed ${item.seeds?.[0] ?? "?"}</span>
+            ${item.profile_name ? `<span class="history-profile">${item.profile_name}</span>` : ""}
+          </div>
+          <div class="history-prompt">${item.prompt || ""}</div>
+          <div class="history-actions">
+            <button class="btn ghost tiny" type="button" data-action="reuse" data-id="${item.id}">Reuse</button>
+            <button class="btn ghost tiny danger" type="button" data-action="delete" data-id="${item.id}" title="Delete history entry and files from disk">Delete</button>
+          </div>
         </div>
-        <div class="history-prompt">${item.prompt}</div>
-        <div class="history-actions">
-          <button class="btn ghost tiny" type="button" data-action="reuse" data-id="${item.id}">Reuse</button>
-          <button class="btn ghost tiny danger" type="button" data-action="delete" data-id="${item.id}" title="Delete history entry and files from disk">Delete</button>
-        </div>
-      </div>
-    `).join("");
+      </div>`;
+    }).join("");
 
     panel.querySelectorAll('[data-action="reuse"]').forEach((btn) => {
       btn.addEventListener("click", () => this.reuse(btn.dataset.id));
     });
     panel.querySelectorAll('[data-action="delete"]').forEach((btn) => {
       btn.addEventListener("click", () => this.remove(btn.dataset.id));
+    });
+    panel.querySelectorAll('[data-action="open-image"]').forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const url = `/api/output/${encodeURIComponent(btn.dataset.file)}`;
+        const img = document.getElementById("lightboxImg");
+        const vid = document.getElementById("lightboxVideo");
+        const meta = document.getElementById("lightboxMeta");
+        if (img && vid) {
+          img.hidden = false;
+          vid.hidden = true;
+          img.src = url;
+          if (meta) meta.textContent = btn.dataset.file;
+          document.getElementById("lightbox")?.showModal();
+        } else {
+          window.open(url, "_blank");
+        }
+      });
+    });
+    panel.querySelectorAll('[data-action="open-video"]').forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const url = `/api/output/${encodeURIComponent(btn.dataset.file)}`;
+        const img = document.getElementById("lightboxImg");
+        const vid = document.getElementById("lightboxVideo");
+        const meta = document.getElementById("lightboxMeta");
+        if (img && vid) {
+          img.hidden = true;
+          vid.hidden = false;
+          vid.src = url;
+          vid.load();
+          if (meta) meta.textContent = btn.dataset.file;
+          document.getElementById("lightbox")?.showModal();
+        } else {
+          window.open(url, "_blank");
+        }
+      });
     });
   },
 
