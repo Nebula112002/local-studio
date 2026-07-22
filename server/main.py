@@ -678,10 +678,11 @@ async def history_list(limit: int = 50, offset: int = 0) -> dict[str, Any]:
 
 
 @app.delete("/api/history/{item_id}")
-async def history_delete(item_id: str) -> dict[str, str]:
-    if not delete_history_item(item_id):
+async def history_delete(item_id: str) -> dict[str, Any]:
+    result = delete_history_item(item_id)
+    if not result:
         raise HTTPException(status_code=404, detail="History item not found")
-    return {"status": "deleted"}
+    return {"status": "deleted", **result}
 
 
 @app.get("/api/output")

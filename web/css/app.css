@@ -936,6 +936,14 @@ input[type="range"] {
   font-family: var(--mono);
 }
 .history-profile { color: var(--accent); }
+.history-files {
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+.history-actions .btn.danger {
+  color: var(--danger);
+  border-color: rgba(251, 113, 133, 0.35);
+}
 .history-prompt {
   font-size: 0.78rem;
   color: var(--text);
