@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -38,12 +38,15 @@ from server.profiles import (
 )
 from server.progress import progress_state
 from server.prompt_assistant import (
+    DEFAULT_OLLAMA_MODEL,
     AssistantSettings,
     EnhanceRequest,
     check_assistant_status,
     run_assistant,
 )
+from server.proxy import proxy_comfyui_request
 from server.queue import BatchRequest, JobQueue
+from server.stability_matrix import find_stability_matrix_exe, probe_comfyui, resolve_stability_matrix_paths
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = ROOT_DIR / "web"
@@ -73,12 +76,13 @@ class SettingsModel(BaseModel):
     backend_type: str = "auto"
     comfyui_url: str = DEFAULT_BACKENDS["comfyui"]
     automatic1111_url: str = DEFAULT_BACKENDS["automatic1111"]
+    stability_matrix_path: str = ""
     save_to_disk: bool = True
     # Local LLM prompt assistant (Ollama or OpenAI-compatible)
     assistant_enabled: bool = True
     assistant_provider: str = "ollama"
     assistant_url: str = "http://127.0.0.1:11434"
-    assistant_model: str = "llama3.2"
+    assistant_model: str = DEFAULT_OLLAMA_MODEL
     assistant_api_key: str = ""
     assistant_temperature: float = 0.8
 
@@ -127,8 +131,13 @@ class BatchGenerateRequest(GenerateRequest):
 
 def load_settings() -> SettingsModel:
     if CONFIG_PATH.exists():
-        return SettingsModel(**json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
-    return SettingsModel()
+        settings = SettingsModel(**json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
+    else:
+        settings = SettingsModel()
+    if settings.assistant_model == "llama3.2":
+        settings.assistant_model = DEFAULT_OLLAMA_MODEL
+        save_settings(settings)
+    return settings
 
 
 def save_settings(settings: SettingsModel) -> None:
@@ -157,7 +166,10 @@ async def _detect_backend(settings: SettingsModel) -> tuple[BaseBackend, str]:
 
     raise HTTPException(
         status_code=503,
-        detail="No backend found. Start ComfyUI (8188) or A1111/Forge (7860) via Stability Matrix.",
+        detail=(
+            "ComfyUI is not running. Start it manually from Stability Matrix → Packages → ComfyUI → Launch. "
+            "Local Studio never auto-starts ComfyUI."
+        ),
     )
 
 
@@ -313,8 +325,75 @@ async def update_settings(settings: SettingsModel) -> SettingsModel:
     return settings
 
 
+@app.get("/api/image-lab")
+async def image_lab_info() -> dict[str, Any]:
+    settings = load_settings()
+    comfyui_url = settings.comfyui_url.rstrip("/")
+    comfyui = await probe_comfyui(comfyui_url)
+    sm_paths = resolve_stability_matrix_paths(settings.stability_matrix_path or None)
+
+    return {
+        "comfyui_url": comfyui_url,
+        "comfyui_connected": comfyui["connected"],
+        "comfyui_status": comfyui["status"],
+        "comfyui_message": comfyui["message"],
+        "comfyui_hint": comfyui.get("hint", ""),
+        "comfyui_port_open": comfyui.get("port_open", False),
+        "embed_url": "/proxy/comfyui/",
+        "comfyui_direct_url": comfyui_url,
+        "stability_matrix": sm_paths.as_dict(),
+        "duplicate_comfyui_warning": (
+            "Local Studio never starts ComfyUI automatically. "
+            "If port 8188 is in use or you see a database lock, ComfyUI is already running — "
+            "do not click Launch again in Stability Matrix."
+        ),
+    }
+
+
+@app.post("/api/image-lab/launch")
+async def launch_stability_matrix() -> dict[str, str]:
+    settings = load_settings()
+    sm_exe = find_stability_matrix_exe(settings.stability_matrix_path or None)
+    if not sm_exe:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Stability Matrix not found. Set stability_matrix_path in Settings or "
+                "STABILITY_MATRIX_PATH env var."
+            ),
+        )
+
+    comfyui = await probe_comfyui(settings.comfyui_url)
+    import subprocess
+
+    subprocess.Popen([sm_exe], close_fds=True)
+    return {
+        "status": "launched",
+        "path": sm_exe,
+        "comfyui_started": False,
+        "comfyui_already_running": comfyui["connected"],
+        "note": (
+            "Opened Stability Matrix only — ComfyUI was NOT started. "
+            "ComfyUI is already running on port 8188."
+            if comfyui["connected"]
+            else (
+                "Opened Stability Matrix only — ComfyUI was NOT started. "
+                "Launch ComfyUI yourself from Packages → ComfyUI when you are ready."
+            )
+        ),
+    }
+
+
+@app.api_route("/proxy/comfyui/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
+async def comfyui_proxy(path: str, request: Request) -> Response:
+    settings = load_settings()
+    return await proxy_comfyui_request(settings.comfyui_url, path, request)
+
+
 @app.get("/api/backend")
 async def backend_info() -> dict[str, Any]:
+    settings = load_settings()
+    comfyui = await probe_comfyui(settings.comfyui_url)
     try:
         backend, backend_type = await get_backend()
         info = await backend.get_info()
@@ -328,9 +407,17 @@ async def backend_info() -> dict[str, Any]:
             "schedulers": info.schedulers,
             "video_models": info.video_models,
             "capabilities": info.capabilities,
+            "comfyui_status": comfyui["status"],
+            "comfyui_message": comfyui["message"],
         }
     except HTTPException as exc:
-        return {"connected": False, "error": exc.detail}
+        return {
+            "connected": False,
+            "error": exc.detail,
+            "comfyui_status": comfyui["status"],
+            "comfyui_message": comfyui["message"],
+            "comfyui_hint": comfyui.get("hint", ""),
+        }
 
 
 @app.post("/api/generate")

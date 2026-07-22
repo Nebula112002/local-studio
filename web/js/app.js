@@ -356,7 +356,7 @@ async function refreshBackend() {
       return;
     }
     const caps = info.capabilities || ["txt2img"];
-    setStatus(true, `${info.name} — ${caps.join(", ")}`);
+    setStatus(true, info.name || "Connected");
     fillSelect(els.modelSelect, ["", ...info.models]);
     els.modelSelect.querySelector("option").textContent = "(auto / default)";
     fillSelect(els.videoModelSelect, ["", ...(info.video_models || [])]);
@@ -401,6 +401,27 @@ function clearSourceImage() {
   els.sourceImageInput.value = "";
 }
 
+function populateAssistantModels(status, configuredModel) {
+  const select = $("assistantModel");
+  if (!select) return;
+  const models = status?.models || [];
+  const current = configuredModel || select.value || "qwen2.5:3b";
+  if (!models.length) {
+    select.innerHTML = `<option value="${current}">${current}</option>`;
+    select.value = current;
+    return;
+  }
+  select.innerHTML = "";
+  for (const name of models) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    select.appendChild(opt);
+  }
+  const pick = status?.effective_model || current;
+  select.value = [...select.options].some((o) => o.value === pick) ? pick : current;
+}
+
 async function loadSettings() {
   const settings = await API.get("/api/settings");
   els.backendType.value = settings.backend_type;
@@ -410,9 +431,10 @@ async function loadSettings() {
   if ($("assistantEnabled")) $("assistantEnabled").checked = settings.assistant_enabled !== false;
   if ($("assistantProvider")) $("assistantProvider").value = settings.assistant_provider || "ollama";
   if ($("assistantUrl")) $("assistantUrl").value = settings.assistant_url || "http://127.0.0.1:11434";
-  if ($("assistantModel")) $("assistantModel").value = settings.assistant_model || "llama3.2";
   if ($("assistantApiKey")) $("assistantApiKey").value = settings.assistant_api_key || "";
   if ($("assistantTemperature")) $("assistantTemperature").value = settings.assistant_temperature ?? 0.8;
+  const status = await PromptAssistant.checkStatus();
+  populateAssistantModels(status, settings.assistant_model || "qwen2.5:3b");
 }
 
 async function saveSettings(e) {
@@ -425,12 +447,13 @@ async function saveSettings(e) {
     assistant_enabled: $("assistantEnabled")?.checked ?? true,
     assistant_provider: $("assistantProvider")?.value || "ollama",
     assistant_url: $("assistantUrl")?.value || "http://127.0.0.1:11434",
-    assistant_model: $("assistantModel")?.value || "llama3.2",
+    assistant_model: $("assistantModel")?.value || "qwen2.5:3b",
     assistant_api_key: $("assistantApiKey")?.value || "",
     assistant_temperature: Number($("assistantTemperature")?.value) || 0.8,
   });
   els.settingsDialog.close();
   await refreshBackend();
+  await ComfyUIStatus.refresh();
   await PromptAssistant.checkStatus();
 }
 
@@ -667,6 +690,7 @@ async function init() {
   updateMotionLabel();
   setMode("txt2img");
   await loadSettings();
+  ComfyUIStatus.init();
   await AccessLinks.init();
   await refreshBackend();
   await ProfileManager.load();

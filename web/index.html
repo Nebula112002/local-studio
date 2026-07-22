@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Local Studio</title>
-  <meta name="description" content="Premium local AI image and video generation studio" />
+  <meta name="description" content="Local AI image and video generation" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -14,69 +14,81 @@
   <div class="app">
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark"></div>
-        <div>
-          <h1>Local Studio <span class="pro-badge">Pro</span></h1>
-          <p>Premium local image &amp; video generation</p>
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div class="brand-text">
+          <h1>Local Studio</h1>
+          <p>Image &amp; video</p>
         </div>
       </div>
+
+      <nav class="mode-tabs" id="modeTabs" aria-label="Generation mode">
+        <button type="button" class="mode-tab active" data-mode="txt2img">Image</button>
+        <button type="button" class="mode-tab" data-mode="img2img">Image → Image</button>
+        <button type="button" class="mode-tab" data-mode="txt2video">Video</button>
+        <button type="button" class="mode-tab" data-mode="img2video">Animate</button>
+      </nav>
+
       <div class="topbar-actions">
-        <div id="accessBar" class="access-bar"></div>
-        <div id="backendStatus" class="status-pill disconnected">
+        <div id="backendStatus" class="status-pill disconnected" title="Generation backend">
           <span class="dot"></span>
-          <span class="label">Detecting backend…</span>
+          <span class="label">Detecting…</span>
         </div>
         <button id="settingsBtn" class="btn ghost" type="button">Settings</button>
       </div>
     </header>
 
+    <div id="comfyuiBanner" class="comfyui-banner comfyui-checking" role="status" aria-live="polite">
+      <div class="comfyui-banner-main">
+        <span class="comfyui-dot" aria-hidden="true"></span>
+        <div class="comfyui-text">
+          <strong id="comfyuiTitle" class="comfyui-title">Checking ComfyUI…</strong>
+          <p id="comfyuiMessage" class="comfyui-message"></p>
+          <p id="comfyuiHint" class="comfyui-hint" hidden></p>
+        </div>
+      </div>
+      <div class="comfyui-actions">
+        <button id="comfyuiReloadBtn" class="btn ghost small" type="button">Reload</button>
+        <a id="comfyuiOpenBtn" class="btn secondary small hidden" href="/proxy/comfyui/" target="_blank" rel="noopener">Open ComfyUI</a>
+        <button id="comfyuiOpenSmBtn" class="btn ghost small" type="button">Stability Matrix</button>
+      </div>
+    </div>
+
     <main class="layout">
       <aside class="panel settings-panel">
-        <section class="panel-section">
-          <h2>Mode</h2>
-          <div class="mode-tabs" id="modeTabs">
-            <button type="button" class="mode-tab active" data-mode="txt2img">Text → Image</button>
-            <button type="button" class="mode-tab" data-mode="img2img">Image → Image</button>
-            <button type="button" class="mode-tab" data-mode="txt2video">Text → Video</button>
-            <button type="button" class="mode-tab" data-mode="img2video">Image → Video</button>
-          </div>
-        </section>
-
         <section class="panel-section" id="modelSection">
           <h2>Model</h2>
           <label class="field" id="checkpointField">
             <span>Checkpoint</span>
             <select id="modelSelect">
-              <option value="">(auto / default)</option>
+              <option value="">Auto</option>
             </select>
           </label>
           <label class="field hidden" id="videoModelField">
-            <span>Video model (SVD)</span>
+            <span>Video model</span>
             <select id="videoModelSelect">
-              <option value="">(auto)</option>
+              <option value="">Auto</option>
             </select>
           </label>
         </section>
 
         <section class="panel-section" id="sourceImageSection" hidden>
-          <h2>Source image</h2>
+          <h2>Source</h2>
           <div class="dropzone" id="dropzone">
             <input id="sourceImageInput" type="file" accept="image/*" hidden />
             <div id="dropzoneEmpty">
-              <p>Drop an image here or click to browse</p>
+              <p>Drop image or browse</p>
             </div>
             <img id="sourcePreview" alt="Source preview" hidden />
           </div>
-          <button id="clearSourceBtn" class="btn ghost small" type="button" hidden>Remove image</button>
+          <button id="clearSourceBtn" class="btn ghost small" type="button" hidden>Remove</button>
         </section>
 
         <section class="panel-section" id="similaritySection" hidden>
-          <h2>Similarity to source</h2>
+          <h2>Similarity</h2>
           <label class="field">
             <span id="similarityLabel">45% — moderate change</span>
             <input id="similarity" type="range" min="0" max="100" step="1" value="45" />
           </label>
-          <p class="hint">Higher = stays closer to your original image. Lower = more creative change.</p>
         </section>
 
         <section class="panel-section" id="videoSection" hidden>
@@ -92,20 +104,20 @@
             </label>
           </div>
           <label class="field">
-            <span>Motion amount</span>
+            <span>Motion</span>
             <input id="motionBucket" type="range" min="1" max="255" step="1" value="127" />
-            <span id="motionLabel" class="hint">127 — balanced motion</span>
+            <span id="motionLabel" class="hint">127 — balanced</span>
           </label>
           <div class="preset-row" id="videoPresets"></div>
         </section>
 
         <section class="panel-section" id="dimensionsSection">
-          <h2>Dimensions</h2>
+          <h2>Size</h2>
           <div class="preset-row" id="sizePresets">
-            <button type="button" data-w="512" data-h="512" class="chip">512×512</button>
-            <button type="button" data-w="768" data-h="768" class="chip">768×768</button>
-            <button type="button" data-w="1024" data-h="1024" class="chip active">1024×1024</button>
-            <button type="button" data-w="1024" data-h="576" class="chip" data-video="1">1024×576</button>
+            <button type="button" data-w="512" data-h="512" class="chip">512</button>
+            <button type="button" data-w="768" data-h="768" class="chip">768</button>
+            <button type="button" data-w="1024" data-h="1024" class="chip active">1024</button>
+            <button type="button" data-w="1024" data-h="576" class="chip" data-video="1">16:9</button>
             <button type="button" data-w="1024" data-h="1536" class="chip">2:3</button>
             <button type="button" data-w="1536" data-h="1024" class="chip">3:2</button>
           </div>
@@ -119,100 +131,108 @@
               <input id="height" type="number" min="64" max="2048" step="64" value="1024" />
             </label>
           </div>
+          <details class="inline-details">
+            <summary>Platform sizes</summary>
+            <div class="preset-row" id="socialPresets"></div>
+          </details>
         </section>
 
-        <section class="panel-section">
-          <h2>Sampling</h2>
-          <div class="grid-2">
+        <details class="panel-section collapsible">
+          <summary>Sampling &amp; seed</summary>
+          <div class="collapsible-body">
+            <div class="grid-2">
+              <label class="field">
+                <span>Steps</span>
+                <input id="steps" type="number" min="1" max="150" value="28" />
+              </label>
+              <label class="field">
+                <span>CFG</span>
+                <input id="cfgScale" type="number" min="1" max="30" step="0.5" value="7" />
+              </label>
+            </div>
             <label class="field">
-              <span>Steps</span>
-              <input id="steps" type="number" min="1" max="150" value="28" />
+              <span>Sampler</span>
+              <select id="samplerSelect"></select>
             </label>
             <label class="field">
-              <span>CFG Scale</span>
-              <input id="cfgScale" type="number" min="1" max="30" step="0.5" value="7" />
+              <span>Scheduler</span>
+              <select id="schedulerSelect"></select>
+            </label>
+            <label class="field" id="clipSkipField">
+              <span>CLIP Skip</span>
+              <input id="clipSkip" type="number" min="1" max="12" value="1" />
+            </label>
+            <label class="field">
+              <span>Seed</span>
+              <div class="seed-row">
+                <input id="seed" type="number" value="-1" />
+                <button id="randomSeedBtn" class="btn ghost" type="button" title="Random seed">↻</button>
+              </div>
+            </label>
+            <label class="field inline">
+              <input id="lockSeed" type="checkbox" />
+              <span>Lock between runs</span>
             </label>
           </div>
-          <label class="field">
-            <span>Sampler</span>
-            <select id="samplerSelect"></select>
-          </label>
-          <label class="field">
-            <span>Scheduler</span>
-            <select id="schedulerSelect"></select>
-          </label>
-          <label class="field" id="clipSkipField">
-            <span>CLIP Skip</span>
-            <input id="clipSkip" type="number" min="1" max="12" value="1" />
-          </label>
-        </section>
+        </details>
 
-        <section class="panel-section">
-          <h2>Seed</h2>
-          <div class="seed-row">
-            <input id="seed" type="number" value="-1" />
-            <button id="randomSeedBtn" class="btn ghost" type="button" title="Random seed">🎲</button>
+        <details class="panel-section collapsible" id="profilesSection">
+          <summary>Characters</summary>
+          <div class="collapsible-body">
+            <div class="section-header">
+              <button id="newProfileBtn" class="btn ghost small" type="button">New</button>
+            </div>
+            <div id="profileList" class="profile-list"></div>
+            <div id="profileTemplates" class="template-row"></div>
           </div>
-          <label class="field inline">
-            <input id="lockSeed" type="checkbox" />
-            <span>Lock seed between runs</span>
-          </label>
-        </section>
+        </details>
 
-        <section class="panel-section" id="profilesSection">
-          <div class="section-header">
-            <h2>Characters</h2>
-            <button id="newProfileBtn" class="btn ghost small" type="button">+ New</button>
-          </div>
-          <div id="profileList" class="profile-list"></div>
-          <div id="profileTemplates" class="template-row"></div>
-        </section>
-
-        <section class="panel-section" id="batchSection">
-          <h2>Batch</h2>
-          <div class="grid-2">
+        <details class="panel-section collapsible" id="batchSection">
+          <summary>Batch</summary>
+          <div class="collapsible-body">
+            <div class="grid-2">
+              <label class="field">
+                <span>Per pass</span>
+                <input id="batchSize" type="number" min="1" max="8" value="1" />
+              </label>
+              <label class="field">
+                <span>Count</span>
+                <input id="batchCount" type="number" min="1" max="100" value="1" />
+              </label>
+            </div>
             <label class="field">
-              <span>Images / pass</span>
-              <input id="batchSize" type="number" min="1" max="8" value="1" />
+              <span>Seed mode</span>
+              <select id="seedMode">
+                <option value="increment">Increment</option>
+                <option value="fixed">Fixed</option>
+                <option value="random">Random</option>
+              </select>
             </label>
             <label class="field">
-              <span>Batch count</span>
-              <input id="batchCount" type="number" min="1" max="100" value="1" />
+              <span>Prompt variations</span>
+              <textarea id="promptVariations" rows="3" placeholder="One variation per line"></textarea>
+            </label>
+            <label class="field inline">
+              <input id="variationSuffix" type="checkbox" checked />
+              <span>Append to base prompt</span>
             </label>
           </div>
-          <label class="field">
-            <span>Seed mode</span>
-            <select id="seedMode">
-              <option value="increment">Increment per batch</option>
-              <option value="fixed">Fixed (same seed)</option>
-              <option value="random">Random each batch</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Prompt variations <small>(one per line)</small></span>
-            <textarea id="promptVariations" rows="4" placeholder="cinematic lighting&#10;oil painting style&#10;macro detail"></textarea>
-          </label>
-          <label class="field inline">
-            <input id="variationSuffix" type="checkbox" checked />
-            <span>Append variations to base prompt</span>
-          </label>
-        </section>
+        </details>
       </aside>
 
       <section class="workspace">
         <div class="prompt-card">
           <div class="prompt-toolbar">
-            <div class="toolbar-group">
-              <label class="field compact">
-                <span>Character</span>
-                <select id="profileSelect">
-                  <option value="">No character selected</option>
-                </select>
-              </label>
-              <button id="applyProfileBtn" class="btn ghost small" type="button">Apply</button>
-              <button id="batchScenesBtn" class="btn secondary small" type="button" title="Queue all saved scenes">Batch scenes</button>
-              <button id="loadRefBtn" class="btn ghost small" type="button" hidden title="Load reference image">Ref</button>
-            </div>
+            <label class="field compact">
+              <span>Character</span>
+              <select id="profileSelect">
+                <option value="">None</option>
+              </select>
+            </label>
+            <button id="applyProfileBtn" class="btn ghost small" type="button">Apply</button>
+            <button id="batchScenesBtn" class="btn ghost small" type="button" title="Queue all saved scenes">Scenes</button>
+            <button id="loadRefBtn" class="btn ghost small" type="button" hidden title="Load reference image">Ref</button>
+            <div class="toolbar-spacer"></div>
             <div id="assistantStatus" class="status-pill disconnected assistant-pill">
               <span class="dot"></span>
               <span class="label">LLM offline</span>
@@ -220,49 +240,44 @@
           </div>
 
           <div class="preset-section">
-            <span class="preset-label">Quality preset</span>
+            <span class="preset-label">Quality</span>
             <div class="preset-row" id="qualityPresets"></div>
             <input type="hidden" id="qualityPreset" data-active="" />
           </div>
 
-          <div class="preset-section">
-            <span class="preset-label">Social / platform size</span>
-            <div class="preset-row" id="socialPresets"></div>
-          </div>
-
           <label class="field">
-            <span>Scene / setting <small>(optional — appended to character)</small></span>
-            <input id="sceneInput" type="text" placeholder="e.g. beach at sunset, cozy café, rooftop cityscape…" />
+            <span>Scene <small>optional</small></span>
+            <input id="sceneInput" type="text" placeholder="Beach at sunset, rooftop cityscape…" />
           </label>
-          <div class="preset-row" id="sceneChips"></div>
+          <div class="preset-row scene-chips" id="sceneChips"></div>
 
-          <label class="field">
+          <label class="field prompt-field">
             <span>Prompt</span>
-            <textarea id="prompt" rows="5" placeholder="Describe what you want to generate…"></textarea>
+            <textarea id="prompt" rows="4" placeholder="Describe what you want to generate…"></textarea>
           </label>
-          <label class="field">
-            <span>Negative prompt</span>
-            <textarea id="negativePrompt" rows="3" placeholder="What to avoid…"></textarea>
-          </label>
+
+          <details class="inline-details">
+            <summary>Negative prompt</summary>
+            <label class="field">
+              <textarea id="negativePrompt" rows="2" placeholder="What to avoid…"></textarea>
+            </label>
+          </details>
 
           <div class="assistant-bar">
-            <span class="assistant-label">Local AI assistant</span>
-            <div class="assistant-actions">
-              <button id="enhancePromptBtn" class="btn ghost small assistant-btn" type="button">✨ Enhance prompt</button>
-              <button id="generateScenesBtn" class="btn ghost small assistant-btn" type="button">🎬 Scene ideas</button>
-              <button id="generateNegativeBtn" class="btn ghost small assistant-btn" type="button">🚫 Better negative</button>
-              <button id="applyAssistantBtn" class="btn ghost small assistant-btn" type="button">↓ Apply</button>
-              <button id="clearAssistantBtn" class="btn ghost small assistant-btn" type="button">×</button>
-            </div>
+            <button id="enhancePromptBtn" class="btn ghost small assistant-btn" type="button">Enhance</button>
+            <button id="generateScenesBtn" class="btn ghost small assistant-btn" type="button">Ideas</button>
+            <button id="generateNegativeBtn" class="btn ghost small assistant-btn" type="button">Negative</button>
+            <button id="clearAssistantBtn" class="btn ghost small assistant-btn" type="button">Clear</button>
           </div>
           <div id="assistantOutput" class="assistant-output" hidden></div>
 
           <div class="prompt-actions">
             <button id="generateBtn" class="btn primary" type="button">
               <span class="btn-label">Generate</span>
+              <kbd class="shortcut">Ctrl↵</kbd>
             </button>
-            <button id="batchBtn" class="btn secondary" type="button">Queue Batch</button>
-            <button id="cancelBtn" class="btn ghost danger" type="button" hidden>Cancel Queue</button>
+            <button id="batchBtn" class="btn secondary" type="button">Queue batch</button>
+            <button id="cancelBtn" class="btn ghost danger" type="button" hidden>Cancel</button>
           </div>
         </div>
 
@@ -282,19 +297,15 @@
 
         <div class="gallery" id="gallery">
           <div class="empty-state" id="emptyState">
-            <div class="empty-icon">✦</div>
-            <h3>Ready when you are</h3>
-            <p>Start ComfyUI or Forge via Stability Matrix, then pick a mode above.</p>
-            <ul>
-              <li><strong>Text → Image / Image → Image</strong> — Forge or ComfyUI</li>
-              <li><strong>Text → Video / Image → Video</strong> — ComfyUI + SVD model</li>
-            </ul>
+            <div class="empty-icon" aria-hidden="true"></div>
+            <h3>Ready to generate</h3>
+            <p>Write a prompt and press Generate. Launch ComfyUI from Stability Matrix if the status above shows offline.</p>
             <p class="mobile-links" id="mobileLinks"></p>
           </div>
         </div>
 
         <details class="history-section" id="historySection">
-          <summary>Generation history <span class="history-count" id="historyCount"></span></summary>
+          <summary>History <span class="history-count" id="historyCount"></span></summary>
           <div id="historyPanel" class="history-panel"></div>
         </details>
       </section>
@@ -328,17 +339,17 @@
         <span>Save outputs to <code>output/</code></span>
       </label>
       <hr class="modal-divider" />
-      <h3 class="modal-subtitle">Local AI Assistant</h3>
-      <p class="hint modal-hint">Runs on your machine via Ollama — no cloud, no filtering. Install: <code>ollama pull llama3.2</code></p>
+      <h3 class="modal-subtitle">Prompt assistant</h3>
+      <p class="hint modal-hint">Local Ollama — no cloud. Example: <code>ollama pull qwen2.5:3b</code></p>
       <label class="field inline">
         <input id="assistantEnabled" type="checkbox" checked />
-        <span>Enable prompt assistant</span>
+        <span>Enable assistant</span>
       </label>
       <label class="field">
         <span>Provider</span>
         <select id="assistantProvider">
-          <option value="ollama">Ollama (local)</option>
-          <option value="openai_compatible">OpenAI-compatible API</option>
+          <option value="ollama">Ollama</option>
+          <option value="openai_compatible">OpenAI-compatible</option>
         </select>
       </label>
       <label class="field">
@@ -347,10 +358,12 @@
       </label>
       <label class="field">
         <span>Model</span>
-        <input id="assistantModel" type="text" value="llama3.2" placeholder="llama3.2, mistral, dolphin-mixtral…" />
+        <select id="assistantModel">
+          <option value="qwen2.5:3b">qwen2.5:3b</option>
+        </select>
       </label>
       <label class="field">
-        <span>API key <small>(OpenAI-compatible only)</small></span>
+        <span>API key <small>OpenAI-compatible only</small></span>
         <input id="assistantApiKey" type="password" value="" autocomplete="off" />
       </label>
       <label class="field">
@@ -395,7 +408,7 @@
             </select>
           </label>
           <label class="field">
-            <span>Tags <small>(comma-separated)</small></span>
+            <span>Tags <small>comma-separated</small></span>
             <input id="profileTags" type="text" placeholder="blonde, fitness, beach…" />
           </label>
 
@@ -440,11 +453,11 @@
           </label>
 
           <h3 class="form-section-title">Reference image</h3>
-          <p class="hint">Used for img2img consistency — keeps the same face/body across scenes.</p>
+          <p class="hint">Used for img2img consistency across scenes.</p>
           <div class="ref-upload">
             <div class="dropzone small-dropzone" id="profileRefDropzone">
               <input id="profileRefInput" type="file" accept="image/*" hidden />
-              <div id="profileRefEmpty"><p>Drop reference photo or click</p></div>
+              <div id="profileRefEmpty"><p>Drop reference or click</p></div>
               <img id="profileRefPreview" alt="Reference" hidden />
             </div>
             <button id="clearProfileRefBtn" class="btn ghost small" type="button" hidden>Remove</button>
@@ -454,11 +467,11 @@
         <div class="profile-editor-col">
           <h3 class="form-section-title">Prompt &amp; generation</h3>
           <label class="field">
-            <span>Extra prompt tags <small>(prepended)</small></span>
+            <span>Extra prompt tags</span>
             <textarea id="profilePrefix" rows="2" placeholder="Additional style or quality tags…"></textarea>
           </label>
           <label class="field">
-            <span>Auto-built appearance preview</span>
+            <span>Appearance preview</span>
             <div id="profilePromptPreview" class="prompt-preview"></div>
           </label>
           <label class="field">
@@ -486,16 +499,16 @@
             </label>
           </div>
           <label class="field">
-            <span>Locked seed <small>(-1 = random)</small></span>
+            <span>Locked seed <small>-1 = random</small></span>
             <input id="profileSeed" type="number" value="-1" />
           </label>
           <label class="field">
-            <span>Saved scene ideas <small>(one per line)</small></span>
+            <span>Saved scene ideas</span>
             <textarea id="profileSceneIdeas" rows="4" placeholder="beach at golden hour&#10;rainy city street at night"></textarea>
           </label>
           <label class="field">
             <span>Notes</span>
-            <textarea id="profileNotes" rows="2" placeholder="Private notes about this character…"></textarea>
+            <textarea id="profileNotes" rows="2" placeholder="Private notes…"></textarea>
           </label>
         </div>
       </div>

@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-$Port = 8787
+$Port = if ($env:LOCAL_STUDIO_PORT) { [int]$env:LOCAL_STUDIO_PORT } else { 8787 }
 $Python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 $LockFile = Join-Path $PSScriptRoot ".local-studio.lock"
 $LogFile = Join-Path $PSScriptRoot "local-studio.log"
@@ -41,7 +41,7 @@ if (Test-Listening) {
     Write-Log "Local Studio is already running on http://127.0.0.1:$Port"
     if (-not $Quiet) {
         Write-Host "Tailnet: $TailnetUrl" -ForegroundColor Cyan
-        Write-Host "Start ComfyUI in Stability Matrix first if the backend shows disconnected." -ForegroundColor Yellow
+        Write-Host "ComfyUI is manual-only - start it from Stability Matrix when you want to generate." -ForegroundColor Yellow
     }
     exit 0
 }
@@ -71,7 +71,7 @@ try {
     Write-Log ""
     Write-Log "Open http://127.0.0.1:$Port in your browser" "Green"
     Write-Log "Tailnet: $TailnetUrl" "Cyan"
-    Write-Log "Start ComfyUI or Forge in Stability Matrix first." "Yellow"
+    Write-Log "ComfyUI is not auto-started. Launch it manually from Stability Matrix > Packages when ready." "Yellow"
     Write-Log ""
 
     if ($Quiet) {
