@@ -131,7 +131,8 @@ class BatchGenerateRequest(GenerateRequest):
 
 def load_settings() -> SettingsModel:
     if CONFIG_PATH.exists():
-        settings = SettingsModel(**json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
+        # utf-8-sig tolerates a BOM from Windows editors / PowerShell Set-Content
+        settings = SettingsModel(**json.loads(CONFIG_PATH.read_text(encoding="utf-8-sig")))
     else:
         settings = SettingsModel()
     if settings.assistant_model == "llama3.2":
