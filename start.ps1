@@ -6,7 +6,12 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-$Port = 8787
+# App on D:\AI; outputs on G: (never run the studio from G:\Generation).
+if (-not $env:LOCAL_STUDIO_OUTPUT_DIR) {
+    $env:LOCAL_STUDIO_OUTPUT_DIR = "G:\Generation\Local-Studio\output"
+}
+
+$Port = if ($env:LOCAL_STUDIO_PORT) { [int]$env:LOCAL_STUDIO_PORT } else { 8787 }
 $Python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 $LockFile = Join-Path $PSScriptRoot ".local-studio.lock"
 $LogFile = Join-Path $PSScriptRoot "local-studio.log"
@@ -41,15 +46,18 @@ if (Test-Listening) {
     Write-Log "Local Studio is already running on http://127.0.0.1:$Port"
     if (-not $Quiet) {
         Write-Host "Tailnet: $TailnetUrl" -ForegroundColor Cyan
-        Write-Host "Start ComfyUI in Stability Matrix first if the backend shows disconnected." -ForegroundColor Yellow
+        Write-Host "Outputs: $env:LOCAL_STUDIO_OUTPUT_DIR" -ForegroundColor DarkGray
+        Write-Host "ComfyUI is manual-only - start it from Stability Matrix when you want to generate." -ForegroundColor Yellow
     }
     exit 0
 }
 
+New-Item -ItemType Directory -Force -Path $env:LOCAL_STUDIO_OUTPUT_DIR | Out-Null
 Set-Content -Path $LockFile -Value $PID -Encoding ASCII
 
 try {
-    Write-Log "Local Studio - starting..." "Cyan"
+    Write-Log "Local Studio - starting from $PSScriptRoot" "Cyan"
+    Write-Log "Outputs -> $env:LOCAL_STUDIO_OUTPUT_DIR" "DarkGray"
 
     if (-not (Test-Path $Python)) {
         Write-Log "Creating virtual environment..."
@@ -71,7 +79,7 @@ try {
     Write-Log ""
     Write-Log "Open http://127.0.0.1:$Port in your browser" "Green"
     Write-Log "Tailnet: $TailnetUrl" "Cyan"
-    Write-Log "Start ComfyUI or Forge in Stability Matrix first." "Yellow"
+    Write-Log "ComfyUI is not auto-started. Launch it manually from Stability Matrix > Packages when ready." "Yellow"
     Write-Log ""
 
     if ($Quiet) {

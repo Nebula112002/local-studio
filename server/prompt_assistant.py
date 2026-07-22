@@ -28,14 +28,48 @@ Each line should be a unique scene (location + action + mood) that can be append
 Return 5-8 scenes, one per line, no numbering or bullets. Keep each under 30 words."""
 
 
+DEFAULT_OLLAMA_MODEL = "qwen2.5:3b"
+PREFERRED_QWEN_MODELS = (
+    "qwen2.5:3b",
+    "qwen2.5:3b-nebula",
+    "qwen2.5:14b-nebula",
+    "qwen2.5:14b",
+    "qwen2.5-coder:14b",
+)
+_SKIP_MODEL_HINTS = ("embed", "whisper", "cloud")
+
+
 class AssistantSettings(BaseModel):
     enabled: bool = True
     provider: Literal["ollama", "openai_compatible"] = "ollama"
     base_url: str = "http://127.0.0.1:11434"
-    model: str = "llama3.2"
+    model: str = DEFAULT_OLLAMA_MODEL
     api_key: str = ""
     temperature: float = 0.8
     max_tokens: int = 512
+
+
+def _model_installed(model: str, models: list[str]) -> bool:
+    return any(model == m or m.startswith(f"{model}:") for m in models)
+
+
+def resolve_ollama_model(configured: str, models: list[str]) -> str:
+    if not models:
+        return configured
+    for m in models:
+        if m == configured or m.startswith(f"{configured}:"):
+            return m
+    for preferred in PREFERRED_QWEN_MODELS:
+        for m in models:
+            if m == preferred or m.startswith(f"{preferred}:"):
+                return m
+    for m in models:
+        if "qwen" in m.lower():
+            return m
+    for m in models:
+        if not any(hint in m.lower() for hint in _SKIP_MODEL_HINTS):
+            return m
+    return models[0]
 
 
 class EnhanceRequest(BaseModel):
@@ -57,15 +91,16 @@ async def check_assistant_status(settings: AssistantSettings) -> dict[str, Any]:
                 if resp.status_code != 200:
                     return {"available": False, "reason": f"Ollama not reachable at {settings.base_url}"}
                 models = [m.get("name", "") for m in resp.json().get("models", [])]
+                installed = _model_installed(settings.model, models)
+                effective = settings.model if installed else resolve_ollama_model(settings.model, models)
                 return {
                     "available": True,
                     "provider": "ollama",
                     "models": models,
                     "configured_model": settings.model,
-                    "model_installed": any(
-                        settings.model in m or m.startswith(f"{settings.model}:")
-                        for m in models
-                    ),
+                    "effective_model": effective,
+                    "model_installed": installed,
+                    "auto_selected": not installed and effective != settings.model,
                 }
             else:
                 resp = await client.get(f"{settings.base_url.rstrip('/')}/models")
@@ -168,6 +203,17 @@ async def _call_openai_compatible(
         return resp.json()["choices"][0]["message"]["content"].strip()
 
 
+async def _resolve_ollama_settings(settings: AssistantSettings) -> AssistantSettings:
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        resp = await client.get(f"{settings.base_url.rstrip('/')}/api/tags")
+        resp.raise_for_status()
+        models = [m.get("name", "") for m in resp.json().get("models", [])]
+    if _model_installed(settings.model, models):
+        return settings
+    resolved = resolve_ollama_model(settings.model, models)
+    return settings.model_copy(update={"model": resolved})
+
+
 async def run_assistant(
     settings: AssistantSettings,
     request: EnhanceRequest,
@@ -179,6 +225,7 @@ async def run_assistant(
     user_message = _build_user_message(request)
 
     if settings.provider == "ollama":
+        settings = await _resolve_ollama_settings(settings)
         result = await _call_ollama(settings, system, user_message)
     else:
         result = await _call_openai_compatible(settings, system, user_message)

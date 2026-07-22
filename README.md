@@ -1,15 +1,17 @@
-# Local Studio Pro
+# Local Studio
 
-A premium, self-contained, **100% local** image and video generation studio. No cloud APIs, no prompt filtering, no account required. It talks directly to whatever Stable Diffusion backend you run on your machine — typically **ComfyUI** or **Forge / Automatic1111** launched through **Stability Matrix**.
+Self-contained **100% local** image and video generation studio. No cloud APIs, no prompt filtering, no account required. Talks to **ComfyUI** or **Forge / Automatic1111** (usually via Stability Matrix).
 
-## Your links
+## Paths (this PC)
 
-| Where | URL |
-|-------|-----|
-| **On this PC** | **http://127.0.0.1:8787** |
-| **Remote (Tailscale)** | **https://calebscomputer.tailfdadcb.ts.net:8787** |
+| What | Where |
+|------|-------|
+| **App (fast disk)** | `D:\AI\caleb-pc\sites\local-studio` |
+| **Outputs** | `G:\Generation\Local-Studio\output` |
+| **Local URL** | http://127.0.0.1:8787 |
+| **Tailnet** | https://calebscomputer.tailfdadcb.ts.net:8787 |
 
-These links appear in the app header once Local Studio is running. Use the Tailscale link to access from your phone or another device on your tailnet.
+Do **not** run the app from `G:\Generation` — G: is for generated media only.
 
 ## Quick start
 
@@ -69,7 +71,7 @@ Higher similarity = output stays closer to your source image. Lower = more creat
 - **Video presets** — subtle, balanced, dynamic, and cinematic clip presets for SVD video
 - **Toast notifications** — clean feedback instead of popup alerts
 - **Keyboard shortcut** — `Ctrl+Enter` to generate
-- **Auto-save** — PNGs written to `output/` (toggle in Settings)
+- **Auto-save** — PNGs written to `G:\Generation\Local-Studio\output` on this PC (toggle in Settings; override with `LOCAL_STUDIO_OUTPUT_DIR`)
 - **Uncensored** — prompts pass through unchanged to your local model
 
 ## Requirements

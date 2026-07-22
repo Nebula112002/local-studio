@@ -9,3 +9,6 @@ profile_assets/
 .env.*
 !.env.example
 .DS_Store
+*.log
+.local-studio.lock
+boot-*.log

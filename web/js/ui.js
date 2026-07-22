@@ -30,52 +30,132 @@ const Toast = {
   warn(msg) { this.show(msg, "warn", 5000); },
 };
 
-/** Access links bar */
+/** ComfyUI connectivity banner — polls /api/image-lab, never auto-starts ComfyUI */
+
+const ComfyUIStatus = {
+  data: null,
+  polling: null,
+
+  MESSAGES: {
+    offline:
+      "Launch from Stability Matrix → Packages → ComfyUI → Launch",
+    ready:
+      "Ready — open Image Lab for chat editing, or generate below",
+    port_busy:
+      "Port in use but not responding yet. Wait, then Reload.",
+  },
+
+  init() {
+    const reloadBtn = document.getElementById("comfyuiReloadBtn");
+    const smBtn = document.getElementById("comfyuiOpenSmBtn");
+    reloadBtn?.addEventListener("click", () => this.refresh());
+    smBtn?.addEventListener("click", () => this.openStabilityMatrix());
+    this.refresh();
+    this.polling = setInterval(() => this.refresh(), 8000);
+  },
+
+  async refresh() {
+    const reloadBtn = document.getElementById("comfyuiReloadBtn");
+    if (reloadBtn) reloadBtn.disabled = true;
+    try {
+      this.data = await API.get("/api/image-lab");
+      this.render();
+    } catch {
+      this.renderError();
+    } finally {
+      if (reloadBtn) reloadBtn.disabled = false;
+    }
+  },
+
+  async openStabilityMatrix() {
+    const smBtn = document.getElementById("comfyuiOpenSmBtn");
+    if (smBtn) smBtn.disabled = true;
+    try {
+      const result = await API.post("/api/image-lab/launch", {});
+      Toast.info(result.note || "Opened Stability Matrix");
+      setTimeout(() => this.refresh(), 2000);
+    } catch (err) {
+      Toast.error(err.message || "Could not open Stability Matrix");
+    } finally {
+      if (smBtn) smBtn.disabled = false;
+    }
+  },
+
+  renderError() {
+    const banner = document.getElementById("comfyuiBanner");
+    if (!banner) return;
+    banner.className = "comfyui-banner comfyui-offline";
+    document.getElementById("comfyuiTitle").textContent = "Studio unreachable";
+    document.getElementById("comfyuiMessage").textContent =
+      "Could not reach Local Studio API.";
+    const hint = document.getElementById("comfyuiHint");
+    hint.hidden = true;
+    document.getElementById("comfyuiOpenBtn")?.classList.add("hidden");
+  },
+
+  render() {
+    const banner = document.getElementById("comfyuiBanner");
+    if (!banner || !this.data) return;
+
+    const status = this.data.comfyui_status || "offline";
+    const title = document.getElementById("comfyuiTitle");
+    const message = document.getElementById("comfyuiMessage");
+    const hint = document.getElementById("comfyuiHint");
+    const openBtn = document.getElementById("comfyuiOpenBtn");
+
+    const compact = status === "ready";
+    banner.className = `comfyui-banner comfyui-${status}${compact ? " comfyui-compact" : ""}`;
+
+    if (status === "ready") {
+      title.textContent = "ComfyUI ready";
+      message.textContent = this.MESSAGES.ready;
+      hint.hidden = true;
+      if (openBtn) {
+        openBtn.classList.remove("hidden");
+        openBtn.href = this.data.embed_url || "/proxy/comfyui/";
+        openBtn.title = this.data.comfyui_direct_url || this.MESSAGES.ready;
+      }
+    } else if (status === "port_busy") {
+      title.textContent = "ComfyUI starting…";
+      message.textContent = this.data.comfyui_message || this.MESSAGES.port_busy;
+      hint.hidden = false;
+      hint.textContent =
+        this.data.comfyui_hint || "Check Settings → ComfyUI URL if this persists.";
+      openBtn?.classList.add("hidden");
+    } else {
+      title.textContent = "ComfyUI offline";
+      message.textContent = this.MESSAGES.offline;
+      hint.hidden = false;
+      hint.textContent =
+        this.data.comfyui_hint ||
+        "Local Studio does not auto-start ComfyUI — launch it when you need to generate.";
+      openBtn?.classList.add("hidden");
+    }
+  },
+};
+
+/** Access links (empty state + health metadata) */
 
 const AccessLinks = {
+  localUrl: "http://127.0.0.1:8787",
+
   async init() {
     try {
       const health = await API.get("/api/health");
+      this.localUrl = health.local || health.links?.local || this.localUrl;
       this.render(health);
     } catch {
-      this.render({ local: "http://127.0.0.1:8787", tailnet: null });
+      this.render({ local: this.localUrl, tailnet: null });
     }
   },
 
   render(health) {
-    const bar = document.getElementById("accessBar");
-    if (!bar) return;
-
-    const local = health.local || health.links?.local || "http://127.0.0.1:8787";
+    const local = health.local || health.links?.local || this.localUrl;
     const tailnet = health.tailnet || health.links?.tailnet;
-
-    bar.innerHTML = `
-      <div class="access-links">
-        <span class="access-label">Open Local Studio:</span>
-        <a href="${local}" target="_blank" class="access-link local">${local}</a>
-        <button class="btn ghost tiny copy-btn" data-copy="${local}" type="button">Copy</button>
-        ${tailnet ? `
-          <span class="access-sep">·</span>
-          <a href="${tailnet}" target="_blank" class="access-link tailnet" title="Remote access via Tailscale">${tailnet}</a>
-          <button class="btn ghost tiny copy-btn" data-copy="${tailnet}" type="button">Copy</button>
-        ` : ""}
-      </div>
-      <div class="access-meta">
-        <span class="version-badge">v${health.version || "2.0"}</span>
-      </div>
-    `;
-
-    bar.querySelectorAll(".copy-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        navigator.clipboard.writeText(btn.dataset.copy).then(() => {
-          Toast.success("Link copied!");
-        }).catch(() => Toast.error("Could not copy"));
-      });
-    });
 
     const mobile = document.getElementById("mobileLinks");
     if (mobile) {
-      mobile.innerHTML = `Open: <a href="${local}">${local}</a>${tailnet ? ` · <a href="${tailnet}">Tailnet</a>` : ""}`;
+      mobile.innerHTML = `Studio: <a href="${local}">${local}</a>${tailnet ? ` · <a href="${tailnet}">Tailnet</a>` : ""}`;
     }
   },
 };
