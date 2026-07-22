@@ -59,7 +59,6 @@ const els = {
   batchBtn: $("batchBtn"),
   cancelBtn: $("cancelBtn"),
   gallery: $("gallery"),
-  emptyState: $("emptyState"),
   queueBar: $("queueBar"),
   queueStats: $("queueStats"),
   progressFill: $("progressFill"),
@@ -233,13 +232,7 @@ function videoSrc(b64) {
   return imageSrc(b64, "video/mp4");
 }
 
-function hideEmpty() {
-  if (els.emptyState) els.emptyState.style.display = "none";
-}
-
 function addMediaCard({ images = [], videos = [], seeds, prompt, label, status = "completed", error, mode }) {
-  hideEmpty();
-
   if (status !== "completed") {
     const card = document.createElement("article");
     card.className = `card placeholder status-${status}`;

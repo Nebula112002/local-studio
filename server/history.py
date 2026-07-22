@@ -92,13 +92,38 @@ def get_history_item(item_id: str) -> dict[str, Any] | None:
     return None
 
 
-def delete_history_item(item_id: str) -> bool:
+def delete_history_item(item_id: str) -> dict[str, Any] | None:
+    """Remove a history entry and delete its files from disk."""
     index = _load_index()
-    filtered = [e for e in index if e.get("id") != item_id]
-    if len(filtered) == len(index):
-        return False
+    entry: dict[str, Any] | None = None
+    filtered: list[dict[str, Any]] = []
+    for item in index:
+        if item.get("id") == item_id:
+            entry = item
+        else:
+            filtered.append(item)
+    if entry is None:
+        return None
+
+    out = _output_dir().resolve()
+    deleted_files: list[str] = []
+    for name in entry.get("files") or []:
+        # Only allow basenames inside the output directory.
+        candidate = (out / Path(str(name)).name).resolve()
+        try:
+            candidate.relative_to(out)
+        except ValueError:
+            continue
+        if candidate.is_file():
+            candidate.unlink()
+            deleted_files.append(candidate.name)
+
     _save_index(filtered)
-    return True
+    return {
+        "id": item_id,
+        "deleted_files": deleted_files,
+        "files_removed": len(deleted_files),
+    }
 
 
 def scan_output_files() -> list[dict[str, Any]]:

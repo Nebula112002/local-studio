@@ -149,14 +149,8 @@ const AccessLinks = {
     }
   },
 
-  render(health) {
-    const local = health.local || health.links?.local || this.localUrl;
-    const tailnet = health.tailnet || health.links?.tailnet;
-
-    const mobile = document.getElementById("mobileLinks");
-    if (mobile) {
-      mobile.innerHTML = `Studio: <a href="${local}">${local}</a>${tailnet ? ` · <a href="${tailnet}">Tailnet</a>` : ""}`;
-    }
+  render(_health) {
+    // Access URLs stay out of the main chrome.
   },
 };
 
@@ -180,7 +174,7 @@ const HistoryPanel = {
     if (!panel) return;
 
     if (!this.items.length) {
-      panel.innerHTML = '<p class="hint">No generation history yet. Your prompts and seeds are saved here automatically.</p>';
+      panel.innerHTML = '<p class="hint">No history yet.</p>';
       return;
     }
 
@@ -190,11 +184,12 @@ const HistoryPanel = {
           <span class="history-mode">${item.mode}</span>
           <span class="history-seed">Seed ${item.seeds?.[0] ?? "?"}</span>
           ${item.profile_name ? `<span class="history-profile">${item.profile_name}</span>` : ""}
+          ${item.files?.length ? `<span class="history-files">${item.files.length} file${item.files.length === 1 ? "" : "s"}</span>` : ""}
         </div>
         <div class="history-prompt">${item.prompt}</div>
         <div class="history-actions">
           <button class="btn ghost tiny" type="button" data-action="reuse" data-id="${item.id}">Reuse</button>
-          <button class="btn ghost tiny" type="button" data-action="delete" data-id="${item.id}">Delete</button>
+          <button class="btn ghost tiny danger" type="button" data-action="delete" data-id="${item.id}" title="Delete history entry and files from disk">Delete</button>
         </div>
       </div>
     `).join("");
@@ -221,9 +216,14 @@ const HistoryPanel = {
   },
 
   async remove(id) {
-    await API.del(`/api/history/${id}`);
-    Toast.info("Removed from history");
-    await this.load();
+    try {
+      const result = await API.del(`/api/history/${id}`);
+      const n = result.files_removed ?? result.deleted_files?.length ?? 0;
+      Toast.success(n ? `Deleted ${n} file${n === 1 ? "" : "s"} from disk` : "Deleted from history");
+      await this.load();
+    } catch (err) {
+      Toast.error(err.message || "Delete failed");
+    }
   },
 };
 
