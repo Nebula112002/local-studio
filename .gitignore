@@ -12,3 +12,5 @@ profile_assets/
 *.log
 .local-studio.lock
 boot-*.log
+
+.ui-audit/

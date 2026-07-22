@@ -232,49 +232,71 @@ function videoSrc(b64) {
   return imageSrc(b64, "video/mp4");
 }
 
-function addMediaCard({ images = [], videos = [], seeds, prompt, label, status = "completed", error, mode }) {
+function addMediaCard({ images = [], videos = [], seeds, prompt, label, status = "completed", error, mode, filename, filenames }) {
   if (status !== "completed") {
     const card = document.createElement("article");
-    card.className = `card placeholder status-${status}`;
+    card.className = `card placeholder status-${status || "running"}`;
     card.dataset.jobCard = "1";
-    card.innerHTML = `<div>${label || status}</div><div>${error || "Working…"}</div>`;
+    const title = label || (status === "queued" ? "Queued" : "Generating…");
+    const sub = error || prompt || "Working…";
+    card.innerHTML = `<div class="placeholder-title">${title}</div><div class="placeholder-sub">${sub}</div>`;
     els.gallery.prepend(card);
     return card;
   }
 
   videos.forEach((vid, index) => {
     const seed = seeds?.[index];
+    const file = filenames?.[index] || filename;
     const card = document.createElement("article");
     card.className = "card";
+    if (file) card.dataset.filename = file;
     card.innerHTML = `
-      <video src="${videoSrc(vid)}" muted loop playsinline></video>
+      <video src="${typeof vid === "string" && !vid.startsWith("http") && vid.length < 400 ? `/api/output/${encodeURIComponent(vid)}` : videoSrc(vid)}" muted loop playsinline></video>
       <div class="card-body">
         <div><strong>Video</strong> · Seed ${seed ?? "?"}</div>
-        <div class="truncate">${prompt || ""}</div>
+        <div class="truncate">${prompt || file || ""}</div>
       </div>
       <div class="card-actions">
-        <button class="btn ghost" type="button" data-action="download">Download MP4</button>
+        <button class="btn ghost" type="button" data-action="download">Download</button>
         <button class="btn ghost" type="button" data-action="reuse">Reuse seed</button>
+        ${file ? '<button class="btn ghost danger" type="button" data-action="delete">Delete</button>' : ""}
       </div>
     `;
     const video = card.querySelector("video");
-    video.addEventListener("click", () => openLightbox(null, vid, seed, prompt, true));
-    video.addEventListener("mouseenter", () => video.play());
+    const srcIsFile = file && (!vid || String(vid).endsWith(".mp4") || String(vid) === file);
+    if (srcIsFile) {
+      video.src = `/api/output/${encodeURIComponent(file)}`;
+    }
+    video.addEventListener("click", () => {
+      if (srcIsFile) window.open(`/api/output/${encodeURIComponent(file)}`, "_blank");
+      else openLightbox(null, vid, seed, prompt, true);
+    });
+    video.addEventListener("mouseenter", () => video.play().catch(() => {}));
     video.addEventListener("mouseleave", () => { video.pause(); video.currentTime = 0; });
-    card.querySelector('[data-action="download"]').addEventListener("click", () => downloadVideo(vid, seed));
+    card.querySelector('[data-action="download"]').addEventListener("click", () => {
+      if (file) window.open(`/api/output/${encodeURIComponent(file)}`, "_blank");
+      else downloadVideo(vid, seed);
+    });
     card.querySelector('[data-action="reuse"]').addEventListener("click", () => reuseSeed(seed));
+    card.querySelector('[data-action="delete"]')?.addEventListener("click", () => deleteOutputFile(file, card));
     els.gallery.prepend(card);
   });
 
   images.forEach((img, index) => {
     const seed = seeds?.[index];
+    const file = filenames?.[index] || filename;
+    const isFileRef = file && (!img || String(img).endsWith(".png") || String(img).endsWith(".jpg") || String(img) === file);
     const card = document.createElement("article");
     card.className = "card";
+    if (file) card.dataset.filename = file;
+    const imgSrc = isFileRef
+      ? `/api/output/${encodeURIComponent(file)}`
+      : imageSrc(img);
     card.innerHTML = `
-      <img src="${imageSrc(img)}" alt="Generated image" />
+      <img src="${imgSrc}" alt="Generated image" />
       <div class="card-body">
         <div><strong>${mode === "img2img" ? "Img2Img" : "Image"}</strong> · Seed ${seed ?? "?"}</div>
-        <div class="truncate">${prompt || ""}</div>
+        <div class="truncate">${prompt || file || ""}</div>
       </div>
       <div class="card-actions">
         <button class="btn ghost" type="button" data-action="download">Download</button>
@@ -282,16 +304,109 @@ function addMediaCard({ images = [], videos = [], seeds, prompt, label, status =
         <button class="btn ghost" type="button" data-action="animate">→ Video</button>
         <button class="btn ghost" type="button" data-action="set-ref" title="Save as character reference">Ref</button>
         <button class="btn ghost" type="button" data-action="set-thumb" title="Set character thumbnail">Thumb</button>
+        ${file ? '<button class="btn ghost danger" type="button" data-action="delete">Delete</button>' : ""}
       </div>
     `;
-    card.querySelector("img").addEventListener("click", () => openLightbox(img, null, seed, prompt, false));
-    card.querySelector('[data-action="download"]').addEventListener("click", () => downloadImage(img, seed));
+    card.querySelector("img").addEventListener("click", () => {
+      if (isFileRef) window.open(imgSrc, "_blank");
+      else openLightbox(img, null, seed, prompt, false);
+    });
+    card.querySelector('[data-action="download"]').addEventListener("click", () => {
+      if (file) {
+        const a = document.createElement("a");
+        a.href = `/api/output/${encodeURIComponent(file)}`;
+        a.download = file;
+        a.click();
+      } else downloadImage(img, seed);
+    });
     card.querySelector('[data-action="reuse"]').addEventListener("click", () => reuseSeed(seed));
-    card.querySelector('[data-action="animate"]').addEventListener("click", () => useAsVideoSource(img));
-    card.querySelector('[data-action="set-ref"]')?.addEventListener("click", () => ProfileManager.setReferenceFromImage(img));
-    card.querySelector('[data-action="set-thumb"]')?.addEventListener("click", () => ProfileManager.setThumbnailFromImage(img));
+    card.querySelector('[data-action="animate"]').addEventListener("click", async () => {
+      if (isFileRef) {
+        // fetch as blob -> b64 for img2video source
+        try {
+          const res = await fetch(`/api/output/${encodeURIComponent(file)}`);
+          const blob = await res.blob();
+          const b64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result).split(",")[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+          useAsVideoSource(b64);
+        } catch (err) {
+          Toast.error(err.message || "Could not load image");
+        }
+      } else useAsVideoSource(img);
+    });
+    card.querySelector('[data-action="set-ref"]')?.addEventListener("click", async () => {
+      if (isFileRef) {
+        try {
+          const res = await fetch(`/api/output/${encodeURIComponent(file)}`);
+          const blob = await res.blob();
+          const b64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result).split(",")[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+          ProfileManager.setReferenceFromImage(b64);
+        } catch (err) {
+          Toast.error(err.message || "Could not load image");
+        }
+      } else ProfileManager.setReferenceFromImage(img);
+    });
+    card.querySelector('[data-action="set-thumb"]')?.addEventListener("click", async () => {
+      if (isFileRef) {
+        try {
+          const res = await fetch(`/api/output/${encodeURIComponent(file)}`);
+          const blob = await res.blob();
+          const b64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result).split(",")[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+          ProfileManager.setThumbnailFromImage(b64);
+        } catch (err) {
+          Toast.error(err.message || "Could not load image");
+        }
+      } else ProfileManager.setThumbnailFromImage(img);
+    });
+    card.querySelector('[data-action="delete"]')?.addEventListener("click", () => deleteOutputFile(file, card));
     els.gallery.prepend(card);
   });
+}
+
+async function deleteOutputFile(filename, cardEl) {
+  if (!filename) return;
+  try {
+    const result = await API.del(`/api/output/${encodeURIComponent(filename)}`);
+    cardEl?.remove();
+    const n = result.files_removed ?? 1;
+    Toast.success(n ? `Deleted ${filename}` : "Deleted");
+    HistoryPanel.load();
+  } catch (err) {
+    Toast.error(err.message || "Delete failed");
+  }
+}
+
+async function loadGalleryFromDisk() {
+  try {
+    const files = await API.get("/api/output");
+    if (!Array.isArray(files) || !files.length) return;
+    // Render oldest→newest so prepend leaves newest on top
+    for (const f of [...files].reverse().slice(-24)) {
+      const isVideo = f.media_type === "video";
+      addMediaCard({
+        images: isVideo ? [] : [f.filename],
+        videos: isVideo ? [f.filename] : [],
+        filenames: [f.filename],
+        filename: f.filename,
+        prompt: f.filename,
+        mode: isVideo ? "img2video" : "txt2img",
+      });
+    }
+  } catch {}
 }
 
 function reuseSeed(seed) {
@@ -510,6 +625,7 @@ async function generateOnce() {
       seeds: result.seeds,
       prompt: payload.prompt,
       mode: payload.mode,
+      filenames: result.metadata?.files || [],
     });
     Toast.success(`${result.videos?.length ? "Video" : "Image"} generated`);
     HistoryPanel.load();
@@ -692,6 +808,7 @@ async function init() {
   await SocialPresets.load();
   await PromptAssistant.checkStatus();
   await HistoryPanel.load();
+  await loadGalleryFromDisk();
   setInterval(refreshBackend, 15000);
   setInterval(() => PromptAssistant.checkStatus(), 30000);
 }
