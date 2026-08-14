@@ -646,6 +646,8 @@ const QualityPresets = {
 
     }
 
+    if (typeof updateApplyDirty === "function") updateApplyDirty();
+
   },
 
 

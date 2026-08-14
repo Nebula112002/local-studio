@@ -32,6 +32,12 @@ from server.profile_assets import (
     save_thumbnail,
 )
 from server.profile_templates import get_template, list_templates
+from server.generation_defaults import (
+    GenerationDefaults,
+    generation_defaults_exist,
+    load_generation_defaults,
+    save_generation_defaults,
+)
 from server.presets import get_preset, list_presets, list_social_presets, list_video_presets
 from server.profiles import (
     CharacterProfile,
@@ -233,6 +239,8 @@ async def _normalize_result(result: GenerationResult, params: GenerationParams) 
         steps=params.steps,
         cfg_scale=params.cfg_scale,
         sampler=params.sampler,
+        scheduler=params.scheduler,
+        clip_skip=params.clip_skip,
         model=params.model,
         files=saved_files,
         media_type=media_type,
@@ -334,6 +342,18 @@ async def update_settings(settings: SettingsModel) -> SettingsModel:
     _active_backend = None
     _active_backend_type = settings.backend_type
     return settings
+
+
+@app.get("/api/generation-defaults")
+async def get_generation_defaults() -> dict[str, Any]:
+    if not generation_defaults_exist():
+        return {"saved": False}
+    return {"saved": True, **load_generation_defaults().model_dump()}
+
+
+@app.post("/api/generation-defaults")
+async def update_generation_defaults(defaults: GenerationDefaults) -> GenerationDefaults:
+    return save_generation_defaults(defaults)
 
 
 @app.get("/api/image-lab")

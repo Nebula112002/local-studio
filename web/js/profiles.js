@@ -131,6 +131,7 @@ const ProfileManager = {
     }
     this.renderSceneChips();
     this.updateRefButton();
+    if (typeof updateApplyDirty === "function") updateApplyDirty();
   },
 
   renderSceneChips() {

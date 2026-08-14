@@ -3,6 +3,7 @@ output/
 __pycache__/
 *.pyc
 config.json
+generation.json
 profiles.json
 profile_assets/
 .env

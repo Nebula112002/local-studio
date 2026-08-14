@@ -55,7 +55,9 @@ class ComfyUIBackend(BaseBackend):
             if not self._is_video_checkpoint_name(model)
         ]
         samplers = self._list_from_object_info(info, "KSampler", "sampler_name")
-        schedulers = ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform"]
+        schedulers = self._list_from_object_info(info, "KSampler", "scheduler")
+        if not schedulers:
+            schedulers = ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform"]
         video_models = self._list_from_object_info(info, "ImageOnlyCheckpointLoader", "ckpt_name")
 
         capabilities = ["txt2img", "img2img"]
@@ -110,18 +112,51 @@ class ComfyUIBackend(BaseBackend):
 
         raise ValueError(f"Unsupported mode: {params.mode}")
 
+    @staticmethod
+    def _resolve_seed(params: GenerationParams) -> int:
+        return params.seed if params.seed >= 0 else random.randint(0, 2**32 - 1)
+
+    @staticmethod
+    def _sampler_seed(workflow: dict[str, Any]) -> int:
+        for node in workflow.values():
+            if node.get("class_type") == "KSampler":
+                return int(node.get("inputs", {}).get("seed", 0))
+        return 0
+
+    @staticmethod
+    def _apply_clip_skip(
+        workflow: dict[str, Any],
+        params: GenerationParams,
+        checkpoint_node: str = "4",
+        encode_nodes: tuple[str, ...] = ("6", "7"),
+        skip_node: str = "12",
+    ) -> None:
+        skip = int(params.clip_skip or 1)
+        if skip <= 1:
+            return
+        workflow[skip_node] = {
+            "class_type": "CLIPSetLastLayer",
+            "inputs": {
+                "clip": [checkpoint_node, 1],
+                "stop_at_clip_layer": -skip,
+            },
+        }
+        for node_id in encode_nodes:
+            if node_id in workflow:
+                workflow[node_id]["inputs"]["clip"] = [skip_node, 0]
+
     def _build_txt2img_workflow(self, params: GenerationParams) -> dict[str, Any]:
-        seed = params.seed if params.seed >= 0 else random.randint(0, 2**32 - 1)
+        seed = self._resolve_seed(params)
         model = params.model or self._default_checkpoint()
-        return {
+        workflow: dict[str, Any] = {
             "3": {
                 "class_type": "KSampler",
                 "inputs": {
                     "seed": seed,
                     "steps": params.steps,
                     "cfg": params.cfg_scale,
-                    "sampler_name": params.sampler,
-                    "scheduler": params.scheduler,
+                    "sampler_name": params.sampler or "euler",
+                    "scheduler": params.scheduler or "normal",
                     "denoise": 1.0,
                     "model": ["4", 0],
                     "positive": ["6", 0],
@@ -139,11 +174,13 @@ class ComfyUIBackend(BaseBackend):
             "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
             "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": "local_studio", "images": ["8", 0]}},
         }
+        self._apply_clip_skip(workflow, params)
+        return workflow
 
     def _build_img2img_workflow(self, params: GenerationParams, image_name: str) -> dict[str, Any]:
-        seed = params.seed if params.seed >= 0 else random.randint(0, 2**32 - 1)
+        seed = self._resolve_seed(params)
         model = params.model or self._default_checkpoint()
-        return {
+        workflow: dict[str, Any] = {
             "10": {"class_type": "LoadImage", "inputs": {"image": image_name}},
             "11": {"class_type": "VAEEncode", "inputs": {"pixels": ["10", 0], "vae": ["4", 2]}},
             "3": {
@@ -152,8 +189,8 @@ class ComfyUIBackend(BaseBackend):
                     "seed": seed,
                     "steps": params.steps,
                     "cfg": params.cfg_scale,
-                    "sampler_name": params.sampler,
-                    "scheduler": params.scheduler,
+                    "sampler_name": params.sampler or "euler",
+                    "scheduler": params.scheduler or "normal",
                     "denoise": params.denoise,
                     "model": ["4", 0],
                     "positive": ["6", 0],
@@ -167,9 +204,11 @@ class ComfyUIBackend(BaseBackend):
             "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
             "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": "local_studio", "images": ["8", 0]}},
         }
+        self._apply_clip_skip(workflow, params)
+        return workflow
 
     def _build_svd_workflow(self, params: GenerationParams, image_name: str) -> dict[str, Any]:
-        seed = params.seed if params.seed >= 0 else random.randint(0, 2**32 - 1)
+        seed = self._resolve_seed(params)
         video_model = params.video_model or self._default_video_model()
         # SVD works best at 1024x576; scale user request proportionally
         width = min(max(params.width, 256), 1024)
@@ -205,7 +244,7 @@ class ComfyUIBackend(BaseBackend):
                     "steps": max(params.steps, 14),
                     "cfg": min(params.cfg_scale, 4.0) if params.cfg_scale > 4 else params.cfg_scale,
                     "sampler_name": params.sampler if params.sampler in ("euler", "euler_ancestral") else "euler",
-                    "scheduler": "karras",
+                    "scheduler": params.scheduler if params.scheduler in ("karras", "normal", "simple") else "karras",
                     "denoise": 1.0,
                     "model": ["1", 0],
                     "positive": ["3", 0],
@@ -296,7 +335,7 @@ class ComfyUIBackend(BaseBackend):
         params: GenerationParams,
         expect_video: bool = False,
     ) -> GenerationResult:
-        seed = params.seed if params.seed >= 0 else random.randint(0, 2**32 - 1)
+        seed = self._sampler_seed(workflow)
         client_id = str(uuid.uuid4())
 
         async with httpx.AsyncClient(timeout=900.0) as client:
