@@ -55,6 +55,7 @@
 
     <main class="layout">
       <aside class="panel settings-panel">
+        <div class="settings-scroll">
         <section class="panel-section" id="modelSection">
           <h2>Model</h2>
           <label class="field" id="checkpointField">
@@ -218,6 +219,11 @@
             </label>
           </div>
         </details>
+        </div>
+        <div class="apply-bar" id="applyBar">
+          <p class="apply-summary" id="applySummary">Click Apply to lock sampler, size, and steps</p>
+          <button id="applySettingsBtn" class="btn primary" type="button">Apply</button>
+        </div>
       </aside>
 
       <section class="workspace">

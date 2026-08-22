@@ -266,7 +266,33 @@ const HistoryPanel = {
     if (item.height) document.getElementById("height").value = item.height;
     if (item.steps) document.getElementById("steps").value = item.steps;
     if (item.cfg_scale) document.getElementById("cfgScale").value = item.cfg_scale;
+    if (item.sampler) {
+      const s = document.getElementById("samplerSelect");
+      if (s) {
+        if (![...s.options].some((o) => o.value === item.sampler)) {
+          const opt = document.createElement("option");
+          opt.value = item.sampler;
+          opt.textContent = item.sampler;
+          s.appendChild(opt);
+        }
+        s.value = item.sampler;
+      }
+    }
+    if (item.scheduler) {
+      const s = document.getElementById("schedulerSelect");
+      if (s) {
+        if (![...s.options].some((o) => o.value === item.scheduler)) {
+          const opt = document.createElement("option");
+          opt.value = item.scheduler;
+          opt.textContent = item.scheduler;
+          s.appendChild(opt);
+        }
+        s.value = item.scheduler;
+      }
+    }
+    if (item.clip_skip) document.getElementById("clipSkip").value = item.clip_skip;
     Toast.success("Loaded from history");
+    if (typeof updateApplyDirty === "function") updateApplyDirty();
   },
 
   async remove(id) {
@@ -367,6 +393,7 @@ const VideoPresets = {
     if (preset.width) document.getElementById("width").value = preset.width;
     if (preset.height) document.getElementById("height").value = preset.height;
     Toast.success(`Applied: ${preset.label}`);
+    if (typeof updateApplyDirty === "function") updateApplyDirty();
   },
 };
 
@@ -405,5 +432,6 @@ const SocialPresets = {
     if (preset.cfg_scale) document.getElementById("cfgScale").value = preset.cfg_scale;
     document.querySelectorAll("#sizePresets .chip").forEach((c) => c.classList.remove("active"));
     Toast.success(`${preset.label}: ${preset.width}×${preset.height}`);
+    if (typeof updateApplyDirty === "function") updateApplyDirty();
   },
 };

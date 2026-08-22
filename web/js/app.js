@@ -7,6 +7,8 @@ const MODE_LABELS = {
   img2video: "Animate image",
 };
 
+const APPLIED_STORAGE_KEY = "localStudio.appliedSettings";
+
 const state = {
   backend: null,
   polling: null,
@@ -15,6 +17,7 @@ const state = {
   galleryItems: [],
   mode: "txt2img",
   sourceImageB64: null,
+  applied: null,
 };
 
 const els = {
@@ -80,6 +83,9 @@ const els = {
   lightboxMeta: $("lightboxMeta"),
   lightboxClose: $("lightboxClose"),
   randomSeedBtn: $("randomSeedBtn"),
+  applyBar: $("applyBar"),
+  applySummary: $("applySummary"),
+  applySettingsBtn: $("applySettingsBtn"),
 };
 
 function setStatus(connected, label) {
@@ -89,14 +95,180 @@ function setStatus(connected, label) {
 }
 
 function fillSelect(select, items, fallback = ["euler"]) {
+  const current = select.value;
+  const list = [...(items?.length ? items : fallback)];
+  if (current && !list.includes(current)) list.unshift(current);
   select.innerHTML = "";
-  const list = items?.length ? items : fallback;
   for (const item of list) {
     const opt = document.createElement("option");
     opt.value = item;
     opt.textContent = item;
     select.appendChild(opt);
   }
+  if (current && [...select.options].some((o) => o.value === current)) {
+    select.value = current;
+  }
+}
+
+function setSelectValue(select, value) {
+  if (!select) return;
+  const str = value == null ? "" : String(value);
+  if (str && ![...select.options].some((o) => o.value === str)) {
+    const opt = document.createElement("option");
+    opt.value = str;
+    opt.textContent = str;
+    select.appendChild(opt);
+  }
+  select.value = str;
+}
+
+function readSidebarSettings() {
+  return {
+    model: els.modelSelect?.value || "",
+    video_model: els.videoModelSelect?.value || "",
+    sampler: els.samplerSelect?.value || "euler",
+    scheduler: els.schedulerSelect?.value || "normal",
+    width: Number(els.width.value) || 1024,
+    height: Number(els.height.value) || 1024,
+    steps: Number(els.steps.value) || 28,
+    cfg_scale: Number(els.cfgScale.value) || 7,
+    clip_skip: Number(els.clipSkip.value) || 1,
+    seed: Number(els.seed.value),
+    lock_seed: !!els.lockSeed.checked,
+    batch_size: Number(els.batchSize.value) || 1,
+    batch_count: Number(els.batchCount.value) || 1,
+    seed_mode: els.seedMode.value || "increment",
+    frames: Number(els.frames.value) || 25,
+    fps: Number(els.fps.value) || 8,
+    motion_bucket_id: Number(els.motionBucket.value) || 127,
+    similarity: Number(els.similarity.value) || 45,
+  };
+}
+
+function writeSidebarSettings(settings) {
+  if (!settings) return;
+  if ("model" in settings) setSelectValue(els.modelSelect, settings.model || "");
+  if ("video_model" in settings) setSelectValue(els.videoModelSelect, settings.video_model || "");
+  if (settings.sampler) setSelectValue(els.samplerSelect, settings.sampler);
+  if (settings.scheduler) setSelectValue(els.schedulerSelect, settings.scheduler);
+  if (settings.width) els.width.value = settings.width;
+  if (settings.height) els.height.value = settings.height;
+  if (settings.steps) els.steps.value = settings.steps;
+  if (settings.cfg_scale != null) els.cfgScale.value = settings.cfg_scale;
+  if (settings.clip_skip) els.clipSkip.value = settings.clip_skip;
+  if (settings.seed != null) els.seed.value = settings.seed;
+  if ("lock_seed" in settings) {
+    els.lockSeed.checked = !!settings.lock_seed;
+    state.lockedSeed = settings.lock_seed && Number(settings.seed) >= 0 ? Number(settings.seed) : null;
+  }
+  if (settings.batch_size) els.batchSize.value = settings.batch_size;
+  if (settings.batch_count) els.batchCount.value = settings.batch_count;
+  if (settings.seed_mode) els.seedMode.value = settings.seed_mode;
+  if (settings.frames) els.frames.value = settings.frames;
+  if (settings.fps) els.fps.value = settings.fps;
+  if (settings.motion_bucket_id) {
+    els.motionBucket.value = settings.motion_bucket_id;
+    updateMotionLabel();
+  }
+  if (settings.similarity != null) {
+    els.similarity.value = settings.similarity;
+    updateSimilarityLabel();
+  }
+  syncSizeChips();
+}
+
+function syncSizeChips() {
+  const w = String(els.width.value);
+  const h = String(els.height.value);
+  document.querySelectorAll("#sizePresets .chip").forEach((chip) => {
+    chip.classList.toggle("active", chip.dataset.w === w && chip.dataset.h === h);
+  });
+}
+
+function settingsEqual(a, b) {
+  return !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+}
+
+function isSidebarDirty() {
+  return !state.applied || !settingsEqual(readSidebarSettings(), state.applied);
+}
+
+function formatAppliedSummary(settings) {
+  if (!settings) return "Click Apply to lock sampler, size, and steps";
+  const seed = settings.lock_seed && Number(settings.seed) >= 0 ? `seed ${settings.seed}` : "random seed";
+  return `${settings.sampler} · ${settings.scheduler} · ${settings.steps} steps · CFG ${settings.cfg_scale} · ${settings.width}×${settings.height} · ${seed}`;
+}
+
+function updateApplyDirty() {
+  const dirty = isSidebarDirty();
+  els.applyBar?.classList.toggle("dirty", dirty);
+  if (els.applySummary) {
+    els.applySummary.textContent = dirty
+      ? "Unapplied changes — click Apply to lock them in"
+      : formatAppliedSummary(state.applied);
+  }
+  if (els.applySettingsBtn) {
+    els.applySettingsBtn.textContent = dirty ? "Apply changes" : "Applied";
+  }
+}
+
+function persistAppliedLocal(settings) {
+  try {
+    localStorage.setItem(APPLIED_STORAGE_KEY, JSON.stringify(settings));
+  } catch {}
+}
+
+function loadAppliedLocal() {
+  try {
+    const raw = localStorage.getItem(APPLIED_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function toApiDefaults(settings) {
+  return {
+    ...settings,
+    model: settings.model || null,
+    video_model: settings.video_model || null,
+  };
+}
+
+function applySidebarSettings({ persist = true, toast = false } = {}) {
+  const settings = readSidebarSettings();
+  state.applied = settings;
+  persistAppliedLocal(settings);
+  if (persist) {
+    API.post("/api/generation-defaults", toApiDefaults(settings)).catch(() => {});
+  }
+  updateApplyDirty();
+  if (toast) {
+    Toast.success(`Applied ${settings.sampler} · ${settings.steps} steps · CFG ${settings.cfg_scale}`);
+  }
+  return settings;
+}
+
+function commitSidebarForGenerate() {
+  if (isSidebarDirty()) applySidebarSettings({ persist: true, toast: false });
+  return state.applied || readSidebarSettings();
+}
+
+async function restoreAppliedSettings() {
+  let saved = null;
+  try {
+    const remote = await API.get("/api/generation-defaults");
+    if (remote?.saved) saved = remote;
+  } catch {}
+  if (!saved) saved = loadAppliedLocal();
+  if (saved) {
+    writeSidebarSettings(saved);
+    state.applied = readSidebarSettings();
+    persistAppliedLocal(state.applied);
+  } else {
+    state.applied = readSidebarSettings();
+  }
+  updateApplyDirty();
 }
 
 function similarityToDenoise(similarity) {
@@ -150,6 +322,7 @@ function setMode(mode) {
   }
 
   applyCapabilityHints();
+  updateApplyDirty();
 }
 
 function applyCapabilityHints() {
@@ -165,6 +338,7 @@ function getPayload() {
   const profile = ProfileManager.getActive();
   let prompt = els.prompt.value.trim();
   const scene = document.getElementById("sceneInput")?.value?.trim() || "";
+  const gen = commitSidebarForGenerate();
 
   // If character is active and prompt doesn't already include appearance, merge
   if (profile && scene && !prompt.includes(profile.hair || "___")) {
@@ -186,22 +360,22 @@ function getPayload() {
     profile_id: ProfileManager.activeId || null,
     profile_name: ProfileManager.getActive()?.name || null,
     mode: state.mode,
-    width: Number(els.width.value),
-    height: Number(els.height.value),
-    steps: Number(els.steps.value),
-    cfg_scale: Number(els.cfgScale.value),
-    sampler: els.samplerSelect.value,
-    scheduler: els.schedulerSelect.value,
-    seed: Number(els.seed.value),
-    batch_size: Number(els.batchSize.value),
-    model: els.modelSelect.value || null,
-    clip_skip: Number(els.clipSkip.value),
-    denoise: similarityToDenoise(Number(els.similarity.value)),
+    width: Number(gen.width),
+    height: Number(gen.height),
+    steps: Number(gen.steps),
+    cfg_scale: Number(gen.cfg_scale),
+    sampler: gen.sampler || "euler",
+    scheduler: gen.scheduler || "normal",
+    seed: Number(gen.seed),
+    batch_size: Number(gen.batch_size),
+    model: gen.model || null,
+    clip_skip: Number(gen.clip_skip) || 1,
+    denoise: similarityToDenoise(Number(gen.similarity)),
     init_image: state.sourceImageB64,
-    frames: Number(els.frames.value),
-    fps: Number(els.fps.value),
-    video_model: els.videoModelSelect.value || null,
-    motion_bucket_id: Number(els.motionBucket.value),
+    frames: Number(gen.frames),
+    fps: Number(gen.fps),
+    video_model: gen.video_model || null,
+    motion_bucket_id: Number(gen.motion_bucket_id),
   };
 }
 
@@ -463,8 +637,8 @@ async function refreshBackend() {
       state.backend = null;
       return;
     }
-    const caps = info.capabilities || ["txt2img"];
     setStatus(true, info.name || "Connected");
+    const draft = readSidebarSettings();
     fillSelect(els.modelSelect, ["", ...info.models]);
     els.modelSelect.querySelector("option").textContent = "(auto / default)";
     fillSelect(els.videoModelSelect, ["", ...(info.video_models || [])]);
@@ -473,6 +647,7 @@ async function refreshBackend() {
     }
     fillSelect(els.samplerSelect, info.samplers, ["euler", "dpmpp_2m", "ddim"]);
     fillSelect(els.schedulerSelect, info.schedulers, ["normal", "karras"]);
+    writeSidebarSettings(draft);
     state.backend = info;
     applyCapabilityHints();
   } catch {
@@ -635,6 +810,12 @@ async function generateOnce() {
       els.seed.value = result.seeds[0];
       state.lockedSeed = result.seeds[0];
     }
+    if (state.applied) {
+      state.applied.seed = Number(els.seed.value);
+      state.applied.lock_seed = els.lockSeed.checked;
+      persistAppliedLocal(state.applied);
+    }
+    updateApplyDirty();
   } catch (err) {
     stopProgressPolling();
     showGenStatus(false);
@@ -724,6 +905,7 @@ function bindPresets() {
       chip.classList.add("active");
       els.width.value = chip.dataset.w;
       els.height.value = chip.dataset.h;
+      updateApplyDirty();
     });
   });
 }
@@ -764,15 +946,27 @@ function bindEvents() {
     });
   });
 
-  els.similarity.addEventListener("input", updateSimilarityLabel);
-  els.motionBucket.addEventListener("input", updateMotionLabel);
+  els.similarity.addEventListener("input", () => {
+    updateSimilarityLabel();
+    updateApplyDirty();
+  });
+  els.motionBucket.addEventListener("input", () => {
+    updateMotionLabel();
+    updateApplyDirty();
+  });
   els.generateBtn.addEventListener("click", generateOnce);
   els.batchBtn.addEventListener("click", queueBatch);
   els.cancelBtn.addEventListener("click", cancelQueue);
   els.settingsBtn.addEventListener("click", () => els.settingsDialog.showModal());
   els.saveSettingsBtn.addEventListener("click", saveSettings);
+  els.applySettingsBtn?.addEventListener("click", () => {
+    applySidebarSettings({ persist: true, toast: true });
+  });
+  document.querySelector(".settings-scroll")?.addEventListener("input", updateApplyDirty);
+  document.querySelector(".settings-scroll")?.addEventListener("change", updateApplyDirty);
   els.randomSeedBtn.addEventListener("click", () => {
     els.seed.value = Math.floor(Math.random() * 2 ** 32);
+    updateApplyDirty();
   });
   els.lightboxClose.addEventListener("click", () => els.lightbox.close());
   els.lightbox.addEventListener("click", (e) => {
@@ -803,6 +997,7 @@ async function init() {
   ComfyUIStatus.init();
   await AccessLinks.init();
   await refreshBackend();
+  await restoreAppliedSettings();
   await ProfileManager.load();
   await QualityPresets.load();
   await VideoPresets.load();
