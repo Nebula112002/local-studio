@@ -115,8 +115,8 @@ class GenerateRequest(BaseModel):
     clip_skip: int = 1
     denoise: float = Field(default=0.55, ge=0.0, le=1.0)
     init_image: str | None = None
-    frames: int = Field(default=25, ge=8, le=120)
-    fps: int = Field(default=8, ge=1, le=60)
+    frames: int = Field(default=25, ge=8, le=81)
+    fps: int = Field(default=8, ge=4, le=30)
     video_model: str | None = None
     motion_bucket_id: int = Field(default=127, ge=1, le=255)
     profile_id: str | None = None
@@ -221,10 +221,13 @@ async def _normalize_result(result: GenerationResult, params: GenerationParams) 
         filename = OUTPUT_DIR / f"{params.mode}_{stamp}_{index}.png"
         filename.write_bytes(base64.b64decode(image_b64))
         saved_files.append(filename.name)
+    video_refs: list[str] = []
     for index, video_b64 in enumerate(videos):
         filename = OUTPUT_DIR / f"{params.mode}_{stamp}_{index}.mp4"
         filename.write_bytes(base64.b64decode(video_b64))
         saved_files.append(filename.name)
+        # Return a file name, not base64 — Tailscale drops huge generate responses.
+        video_refs.append(filename.name)
 
     # Always record generation history
     extra = getattr(params, "_history_meta", {})
@@ -250,7 +253,7 @@ async def _normalize_result(result: GenerationResult, params: GenerationParams) 
 
     return GenerationResult(
         images=images,
-        videos=videos,
+        videos=video_refs,
         seeds=result.seeds,
         metadata={**(result.metadata or {}), "files": saved_files},
     )

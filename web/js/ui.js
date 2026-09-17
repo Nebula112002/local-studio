@@ -400,6 +400,8 @@ const VideoPresets = {
     }
     if (preset.width) document.getElementById("width").value = preset.width;
     if (preset.height) document.getElementById("height").value = preset.height;
+    document.getElementById("motionBucket")?.dispatchEvent(new Event("input"));
+    if (typeof updateVideoHint === "function") updateVideoHint();
     Toast.success(`Applied: ${preset.label}`);
     if (typeof updateApplyDirty === "function") updateApplyDirty();
   },

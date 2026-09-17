@@ -145,6 +145,18 @@ VIDEO_PRESETS: dict[str, dict[str, Any]] = {
         "width": 640,
         "height": 384,
     },
+    "slow_clip": {
+        "label": "Slow clip",
+        "frames": 61,
+        "fps": 10,
+        "motion_bucket_id": 180,
+        "steps": 4,
+        "cfg_scale": 1.0,
+        "sampler": "euler",
+        "scheduler": "simple",
+        "width": 640,
+        "height": 384,
+    },
 }
 
 

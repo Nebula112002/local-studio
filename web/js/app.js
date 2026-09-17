@@ -39,6 +39,8 @@ const els = {
   videoSection: $("videoSection"),
   frames: $("frames"),
   fps: $("fps"),
+  videoDuration: $("videoDuration"),
+  videoHint: $("videoHint"),
   motionBucket: $("motionBucket"),
   motionLabel: $("motionLabel"),
   batchSection: $("batchSection"),
@@ -170,6 +172,7 @@ function writeSidebarSettings(settings) {
     els.motionBucket.value = settings.motion_bucket_id;
     updateMotionLabel();
   }
+  updateVideoHint();
   if (settings.similarity != null) {
     els.similarity.value = settings.similarity;
     updateSimilarityLabel();
@@ -293,8 +296,31 @@ function updateMotionLabel() {
   const value = Number(els.motionBucket.value);
   let text = "balanced motion";
   if (value < 64) text = "subtle motion";
-  else if (value > 180) text = "high motion";
+  else if (value >= 160) text = "high motion";
   els.motionLabel.textContent = `${value} — ${text}`;
+}
+
+function wanLength(frames) {
+  const maxLen = 81;
+  const n = Math.max(9, Math.min(Number(frames) || 25, maxLen));
+  const count = Math.round((n - 1) / 4);
+  return Math.max(9, Math.min(maxLen, count * 4 + 1));
+}
+
+function updateVideoHint() {
+  const frames = Number(els.frames.value) || 25;
+  const fps = Math.max(4, Math.min(Number(els.fps.value) || 16, 30));
+  const length = wanLength(frames);
+  const secs = (length / fps).toFixed(1);
+  const w = Number(els.width.value) || 640;
+  const h = Number(els.height.value) || 384;
+  if (els.videoDuration) {
+    els.videoDuration.textContent = `${length} frames at ${fps} fps ≈ ${secs}s`;
+  }
+  if (els.videoHint) {
+    els.videoHint.textContent =
+      `Wan 2.2 uses these controls: ${length} frames at ${fps} fps ≈ ${secs}s, ${w}×${h} (capped at 640×480 on 12GB). Motion drives how much it moves. Lightning stays 4 steps.`;
+  }
 }
 
 function setMode(mode) {
@@ -304,11 +330,10 @@ function setMode(mode) {
   });
 
   const needsImage = mode === "img2img" || mode === "img2video";
-  const needsSimilarity = needsImage;
   const isVideo = mode === "txt2video" || mode === "img2video";
 
   els.sourceImageSection.hidden = !needsImage;
-  els.similaritySection.hidden = !needsSimilarity;
+  els.similaritySection.hidden = mode !== "img2img";
   els.videoSection.hidden = !isVideo;
   els.videoModelField.classList.toggle("hidden", !isVideo);
   els.checkpointField.classList.toggle("hidden", isVideo && mode === "img2video");
@@ -317,15 +342,9 @@ function setMode(mode) {
 
   els.generateBtn.querySelector(".btn-label").textContent = MODE_LABELS[mode] || "Generate";
 
-    if (isVideo) {
-    if (Number(els.width.value) >= 1024 && Number(els.height.value) >= 576) {
-      els.width.value = 640;
-      els.height.value = 384;
-    }
-    els.cfgScale.value = Math.min(Number(els.cfgScale.value), 1.5);
-    if (Number(els.fps.value) < 12) els.fps.value = 16;
-    if (Number(els.frames.value) > 33) els.frames.value = 33;
-    if (Number(els.steps.value) >= 20) els.steps.value = 4;
+  if (isVideo) {
+    updateVideoHint();
+    updateMotionLabel();
   }
 
   applyCapabilityHints();
@@ -796,24 +815,82 @@ function stopProgressPolling(finalMessage) {
   });
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function showCompletedResult(result, payload) {
+  const files = result.metadata?.files || result.files || [];
+  addMediaCard({
+    images: result.images || [],
+    videos: result.videos || [],
+    seeds: result.seeds,
+    prompt: payload.prompt,
+    mode: payload.mode,
+    filenames: files,
+  });
+  const isVideo = (result.videos && result.videos.length) || files.some((f) => String(f).endsWith(".mp4"));
+  Toast.success(`${isVideo ? "Video" : "Image"} generated`);
+  HistoryPanel.load();
+}
+
+async function recoverLatestOutput(payload, startedAt) {
+  const deadline = Date.now() + 8 * 60 * 1000;
+  while (Date.now() < deadline) {
+    try {
+      const progress = await API.get("/api/progress");
+      updateGenStatusUI(progress);
+      if (!progress.active) {
+        const hist = await API.get("/api/history?limit=8");
+        const item = (hist.items || []).find((entry) => {
+          const files = entry.files || [];
+          if (!files.length) return false;
+          if (entry.mode && payload.mode && entry.mode !== payload.mode) return false;
+          const ts = Date.parse(entry.timestamp || entry.created_at || "") || 0;
+          return !ts || ts >= startedAt - 5000;
+        });
+        if (item) {
+          return {
+            images: (item.files || []).filter((f) => !String(f).endsWith(".mp4")),
+            videos: (item.files || []).filter((f) => String(f).endsWith(".mp4")),
+            seeds: item.seeds || [],
+            metadata: { files: item.files || [] },
+          };
+        }
+        const files = await API.get("/api/output");
+        const latest = (files || []).find((f) => {
+          const name = f.filename || f.name || "";
+          const modified = Date.parse(f.modified || "") || 0;
+          const isVideo = payload.mode?.includes("video") ? name.endsWith(".mp4") : true;
+          return isVideo && (!modified || modified >= startedAt - 5000);
+        });
+        if (latest?.filename) {
+          const name = latest.filename;
+          return {
+            images: name.endsWith(".mp4") ? [] : [name],
+            videos: name.endsWith(".mp4") ? [name] : [],
+            seeds: [],
+            metadata: { files: [name] },
+          };
+        }
+        return null;
+      }
+    } catch {}
+    await sleep(1500);
+  }
+  return null;
+}
+
 async function generateOnce() {
   if (!validateRequest()) return;
   setBusy(true);
   startProgressPolling();
+  const payload = getPayload();
+  const startedAt = Date.now();
   try {
-    const payload = getPayload();
     const result = await API.post("/api/generate", payload);
     stopProgressPolling("Generation complete");
-    addMediaCard({
-      images: result.images,
-      videos: result.videos,
-      seeds: result.seeds,
-      prompt: payload.prompt,
-      mode: payload.mode,
-      filenames: result.metadata?.files || [],
-    });
-    Toast.success(`${result.videos?.length ? "Video" : "Image"} generated`);
-    HistoryPanel.load();
+    showCompletedResult(result, payload);
     if (!els.lockSeed.checked) {
       els.seed.value = -1;
     } else if (result.seeds?.length) {
@@ -827,9 +904,15 @@ async function generateOnce() {
     }
     updateApplyDirty();
   } catch (err) {
-    stopProgressPolling();
-    showGenStatus(false);
-    Toast.error(err.message || String(err));
+    const recovered = await recoverLatestOutput(payload, startedAt);
+    if (recovered) {
+      stopProgressPolling("Generation complete");
+      showCompletedResult(recovered, payload);
+    } else {
+      stopProgressPolling();
+      showGenStatus(false);
+      Toast.error(err.message || String(err));
+    }
   } finally {
     setBusy(false);
   }
@@ -915,6 +998,7 @@ function bindPresets() {
       chip.classList.add("active");
       els.width.value = chip.dataset.w;
       els.height.value = chip.dataset.h;
+      updateVideoHint();
       updateApplyDirty();
     });
   });
@@ -964,6 +1048,22 @@ function bindEvents() {
     updateMotionLabel();
     updateApplyDirty();
   });
+  els.frames.addEventListener("input", () => {
+    updateVideoHint();
+    updateApplyDirty();
+  });
+  els.fps.addEventListener("input", () => {
+    updateVideoHint();
+    updateApplyDirty();
+  });
+  els.width.addEventListener("input", () => {
+    updateVideoHint();
+    updateApplyDirty();
+  });
+  els.height.addEventListener("input", () => {
+    updateVideoHint();
+    updateApplyDirty();
+  });
   els.generateBtn.addEventListener("click", generateOnce);
   els.batchBtn.addEventListener("click", queueBatch);
   els.cancelBtn.addEventListener("click", cancelQueue);
@@ -1002,6 +1102,7 @@ async function init() {
   QualityPresets.bindEvents();
   updateSimilarityLabel();
   updateMotionLabel();
+  updateVideoHint();
   setMode("txt2img");
   await loadSettings();
   ComfyUIStatus.init();

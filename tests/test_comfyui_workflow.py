@@ -164,7 +164,7 @@ class ComfyUIVideoWorkflowTests(unittest.TestCase):
         self.assertEqual(workflow["10b"]["inputs"]["unet_name"], "wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors")
         self.assertEqual(workflow["13"]["inputs"]["type"], "wan")
         self.assertEqual(workflow["20"]["class_type"], "EmptyHunyuanLatentVideo")
-        self.assertEqual(workflow["20"]["inputs"]["length"], 33)
+        self.assertEqual(workflow["20"]["inputs"]["length"], 61)
         self.assertEqual(workflow["21"]["inputs"]["steps"], 4)
         self.assertEqual(workflow["21"]["inputs"]["cfg"], 1.0)
         self.assertEqual(workflow["21"]["inputs"]["end_at_step"], 2)
@@ -182,8 +182,8 @@ class ComfyUIVideoWorkflowTests(unittest.TestCase):
         self.assertEqual(workflow["20"]["class_type"], "WanImageToVideo")
         self.assertEqual(workflow["20"]["inputs"]["start_image"], ["18", 0])
         self.assertEqual(workflow["17"]["class_type"], "CLIPVisionLoader")
-        self.assertLessEqual(workflow["20"]["inputs"]["width"] * workflow["20"]["inputs"]["height"], 640 * 384)
-        self.assertEqual(workflow["20"]["inputs"]["length"], 33)
+        self.assertLessEqual(workflow["20"]["inputs"]["width"] * workflow["20"]["inputs"]["height"], 640 * 480)
+        self.assertEqual(workflow["20"]["inputs"]["length"], 61)
         self.assertEqual(workflow["14"]["inputs"]["vae_name"], "wan_2.1_vae.safetensors")
 
     def test_wan_5b_uses_wan22_latent(self) -> None:
@@ -235,6 +235,23 @@ class ComfyUIVideoWorkflowTests(unittest.TestCase):
     def test_sampler_seed_reads_advanced_noise_seed(self) -> None:
         workflow = self.backend._build_wan_workflow(_params(mode="txt2video", seed=99))
         self.assertEqual(self.backend._sampler_seed(workflow), 99)
+
+    def test_wan_honors_user_fps_and_frames(self) -> None:
+        workflow = self.backend._build_wan_workflow(
+            _params(mode="txt2video", frames=60, fps=10, width=640, height=384)
+        )
+        self.assertEqual(workflow["20"]["inputs"]["length"], 61)
+        self.assertEqual(workflow["31"]["inputs"]["fps"], 10)
+        self.assertEqual(workflow["20"]["inputs"]["width"], 640)
+        self.assertEqual(workflow["20"]["inputs"]["height"], 384)
+
+    def test_wan_motion_maps_to_shift(self) -> None:
+        quiet = self.backend._build_wan_workflow(_params(mode="txt2video", motion_bucket_id=64))
+        lively = self.backend._build_wan_workflow(_params(mode="txt2video", motion_bucket_id=180))
+        self.assertLess(quiet["11"]["inputs"]["shift"], lively["11"]["inputs"]["shift"])
+        self.assertGreaterEqual(lively["11"]["inputs"]["shift"], 9.0)
+        self.assertAlmostEqual(self.backend._wan_shift(127), 8.0)
+        self.assertAlmostEqual(self.backend._wan_shift(180), 9.66)
 
 
 if __name__ == "__main__":

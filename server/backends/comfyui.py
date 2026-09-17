@@ -354,7 +354,7 @@ class ComfyUIBackend(BaseBackend):
         width, height = self._wan_dimensions(params, bundle["family"])
         length = self._wan_length(params.frames, bundle["family"])
         fps = self._wan_fps(params.fps)
-        steps, cfg, sampler, scheduler, lightning = self._wan_sampler_settings(params, bundle)
+        steps, cfg, sampler, scheduler, _lightning = self._wan_sampler_settings(params, bundle)
 
         high_model_node = "11"
         low_model_node = "12"
@@ -384,6 +384,7 @@ class ComfyUIBackend(BaseBackend):
             },
         }
 
+        shift = self._wan_shift(params.motion_bucket_id)
         high_src = "10"
         if bundle["high_lora"]:
             workflow["11a"] = {
@@ -397,7 +398,7 @@ class ComfyUIBackend(BaseBackend):
             high_src = "11a"
         workflow[high_model_node] = {
             "class_type": "ModelSamplingSD3",
-            "inputs": {"model": [high_src, 0], "shift": 8.0 if lightning else 5.0},
+            "inputs": {"model": [high_src, 0], "shift": shift},
         }
 
         if bundle["low_unet"]:
@@ -418,7 +419,7 @@ class ComfyUIBackend(BaseBackend):
                 low_src = "12a"
             workflow[low_model_node] = {
                 "class_type": "ModelSamplingSD3",
-                "inputs": {"model": [low_src, 0], "shift": 8.0 if lightning else 5.0},
+                "inputs": {"model": [low_src, 0], "shift": shift},
             }
 
         positive, negative, latent = self._attach_wan_latent(
@@ -720,15 +721,23 @@ class ComfyUIBackend(BaseBackend):
     @staticmethod
     def _wan_fps(fps: int | None) -> int:
         value = int(fps or 16)
-        if value < 12:
-            return 16
-        return max(12, min(value, 24))
+        return max(4, min(value, 30))
+
+    @staticmethod
+    def _wan_shift(motion_bucket_id: int | None) -> float:
+        # SVD-style 1..255 mapped onto Wan ModelSamplingSD3 shift.
+        motion = max(1, min(255, int(motion_bucket_id or 127)))
+        if motion <= 127:
+            shift = 3.0 + (motion - 1) / 126.0 * 5.0
+        else:
+            shift = 8.0 + (motion - 127) / 128.0 * 4.0
+        return round(shift, 2)
 
     def _wan_profile(self, family: str) -> dict[str, int]:
         if family == "ti2v_5b":
             return {"max_pixels": 768 * 432, "max_edge": 768, "max_length": 49, "step": 32}
-        # 14B fp8 on a 12GB 4070 Ti — keep 480p-class, ~2s clips
-        return {"max_pixels": 640 * 384, "max_edge": 640, "max_length": 33, "step": 16}
+        # 14B fp8 on 12GB: honor user size/length, cap at 480p-class and 81 frames (4n+1).
+        return {"max_pixels": 640 * 480, "max_edge": 640, "max_length": 81, "step": 16}
 
     def _wan_dimensions(self, params: GenerationParams, family: str) -> tuple[int, int]:
         profile = self._wan_profile(family)
@@ -749,7 +758,7 @@ class ComfyUIBackend(BaseBackend):
 
     def _wan_length(self, frames: int, family: str = "t2v") -> int:
         max_length = self._wan_profile(family)["max_length"]
-        frames = max(8, min(int(frames or 25), max_length))
+        frames = max(9, min(int(frames or 25), max_length))
         count = round((frames - 1) / 4)
         return max(9, min(max_length, count * 4 + 1))
 

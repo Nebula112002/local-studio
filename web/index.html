@@ -97,19 +97,20 @@
           <div class="grid-2">
             <label class="field">
               <span>Frames</span>
-              <input id="frames" type="number" min="8" max="120" value="25" />
+              <input id="frames" type="number" min="8" max="81" value="25" />
             </label>
             <label class="field">
               <span>FPS</span>
-              <input id="fps" type="number" min="1" max="60" value="8" />
+              <input id="fps" type="number" min="4" max="30" value="8" />
             </label>
           </div>
+          <p id="videoDuration" class="hint">25 frames at 8 fps ≈ 3.1s</p>
           <label class="field">
             <span>Motion</span>
             <input id="motionBucket" type="range" min="1" max="255" step="1" value="127" />
-            <span id="motionLabel" class="hint">127 — balanced</span>
+            <span id="motionLabel" class="hint">127 — balanced motion</span>
           </label>
-          <p class="hint">4070 Ti profile: Wan 2.2 I2V at 640×384, 33 frames, 16 fps, 4-step Lightning. Local weights, no prompt filter.</p>
+          <p id="videoHint" class="hint">Wan 2.2 uses your frames, FPS, size, and motion. Length snaps to 4n+1 (max 81). 12GB caps size at 640×480. Lightning stays 4 steps.</p>
           <div class="preset-row" id="videoPresets"></div>
         </section>
 
@@ -117,6 +118,7 @@
           <h2>Size</h2>
           <div class="preset-row" id="sizePresets">
             <button type="button" data-w="512" data-h="512" class="chip">512</button>
+            <button type="button" data-w="640" data-h="384" class="chip" data-video="1">480p</button>
             <button type="button" data-w="768" data-h="768" class="chip">768</button>
             <button type="button" data-w="1024" data-h="1024" class="chip active">1024</button>
             <button type="button" data-w="1024" data-h="576" class="chip" data-video="1">16:9</button>

@@ -48,7 +48,11 @@ The UI auto-detects which backend is running. Use **Settings** to force a specif
 
 ### Similarity slider (image modes)
 
-Higher similarity = output stays closer to your source image. Lower = more creative change. This maps to denoising strength under the hood.
+Higher similarity = output stays closer to your source image. Lower = more creative change. This maps to denoising strength under the hood. Similarity is **image → image only** — Animate uses the source as Wan's first frame instead.
+
+### Video controls
+
+Frames, FPS, size, and Motion are yours. Wan snaps frame count to `4n+1` (max **81** on 14B). FPS 4–30 is honored (10 fps stays 10). Size is capped at **640×480** on the 12GB card so a 4070 Ti can finish the job. Motion maps to Wan's sampling shift (higher = more movement). LightX2V Lightning still runs at 4 steps. Presets (Subtle, Balanced, Dynamic, Cinematic, Slow clip) only apply when you click them.
 
 ### Video setup (Stability Matrix)
 
@@ -69,7 +73,7 @@ Higher similarity = output stays closer to your source image. Lower = more creat
 - **Local AI prompt assistant** — enhance prompts, generate scene ideas, and write negative prompts via **Ollama** or any OpenAI-compatible local API (no cloud, no filtering)
 - **Quality presets** — one-click photorealistic, cinematic, portrait, fashion, anime, and artistic settings
 - **Generation history** — every run is logged with prompt, seed, and settings; reuse any past generation in one click
-- **Video presets** — subtle, balanced, dynamic, and cinematic clip presets for Wan 2.2 Lightning
+- **Video presets** — subtle, balanced, dynamic, cinematic, and slow clip (61 frames / 10 fps) for Wan 2.2 Lightning
 - **Toast notifications** — clean feedback instead of popup alerts
 - **Keyboard shortcut** — `Ctrl+Enter` to generate
 - **Auto-save** — PNGs written to `G:\Generation\Local-Studio\output` on this PC (toggle in Settings; override with `LOCAL_STUDIO_OUTPUT_DIR`)
