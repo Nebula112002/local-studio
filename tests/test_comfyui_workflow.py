@@ -69,6 +69,8 @@ WAN_OBJECT_INFO = {
             "required": {
                 "unet_name": [[
                     "flux1-dev.safetensors",
+                    "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+                    "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
                     "wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
                     "wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
                 ]]
@@ -86,6 +88,8 @@ WAN_OBJECT_INFO = {
             "required": {
                 "lora_name": [[
                     "DaSiWa_LTX23_NSFW_Bodyphysics_Fluid_Motion_Enhancer_v01.safetensors",
+                    "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+                    "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
                     "wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors",
                     "wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors",
                 ]]
@@ -93,8 +97,11 @@ WAN_OBJECT_INFO = {
         }
     },
     "KSampler": {"input": {"required": {"sampler_name": [["euler"]], "scheduler": [["simple", "normal"]]}}},
+    "CLIPVisionLoader": {"input": {"required": {"clip_name": [["clip_vision_h.safetensors"]]}}},
+    "CLIPVisionEncode": {},
     "EmptyHunyuanLatentVideo": {},
     "Wan22ImageToVideoLatent": {},
+    "WanImageToVideo": {},
     "CreateVideo": {},
     "SaveVideo": {},
     "SVD_img2vid_Conditioning": {},
@@ -127,6 +134,8 @@ class ComfyUIVideoWorkflowTests(unittest.TestCase):
         self.assertEqual(
             info.video_models,
             [
+                "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+                "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
                 "wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
                 "wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
             ],
@@ -155,7 +164,7 @@ class ComfyUIVideoWorkflowTests(unittest.TestCase):
         self.assertEqual(workflow["10b"]["inputs"]["unet_name"], "wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors")
         self.assertEqual(workflow["13"]["inputs"]["type"], "wan")
         self.assertEqual(workflow["20"]["class_type"], "EmptyHunyuanLatentVideo")
-        self.assertEqual(workflow["20"]["inputs"]["length"], 61)
+        self.assertEqual(workflow["20"]["inputs"]["length"], 33)
         self.assertEqual(workflow["21"]["inputs"]["steps"], 4)
         self.assertEqual(workflow["21"]["inputs"]["cfg"], 1.0)
         self.assertEqual(workflow["21"]["inputs"]["end_at_step"], 2)
@@ -165,14 +174,33 @@ class ComfyUIVideoWorkflowTests(unittest.TestCase):
 
     def test_wan_img2video_uses_start_image_latent(self) -> None:
         workflow = self.backend._build_wan_workflow(
-            _params(mode="img2video", frames=25, width=1024, height=576),
+            _params(mode="img2video", frames=60, width=1024, height=576),
             "source.png",
         )
+        self.assertEqual(workflow["10"]["inputs"]["unet_name"], "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors")
         self.assertEqual(workflow["18"]["class_type"], "LoadImage")
-        self.assertEqual(workflow["20"]["class_type"], "Wan22ImageToVideoLatent")
+        self.assertEqual(workflow["20"]["class_type"], "WanImageToVideo")
         self.assertEqual(workflow["20"]["inputs"]["start_image"], ["18", 0])
-        self.assertEqual(workflow["20"]["inputs"]["width"] % 32, 0)
-        self.assertEqual(workflow["20"]["inputs"]["height"] % 32, 0)
+        self.assertEqual(workflow["17"]["class_type"], "CLIPVisionLoader")
+        self.assertLessEqual(workflow["20"]["inputs"]["width"] * workflow["20"]["inputs"]["height"], 640 * 384)
+        self.assertEqual(workflow["20"]["inputs"]["length"], 33)
+        self.assertEqual(workflow["14"]["inputs"]["vae_name"], "wan_2.1_vae.safetensors")
+
+    def test_wan_5b_uses_wan22_latent(self) -> None:
+        self.backend._object_info = {
+            **WAN_OBJECT_INFO,
+            "UNETLoader": {
+                "input": {"required": {"unet_name": [["wan2.2_ti2v_5B_fp16.safetensors"]]}}
+            },
+            "LoraLoaderModelOnly": {"input": {"required": {"lora_name": [[]]}}},
+        }
+        workflow = self.backend._build_wan_workflow(
+            _params(mode="img2video", frames=49, width=768, height=432),
+            "source.png",
+        )
+        self.assertEqual(workflow["20"]["class_type"], "Wan22ImageToVideoLatent")
+        self.assertEqual(workflow["14"]["inputs"]["vae_name"], "wan2.2_vae.safetensors")
+        self.assertNotIn("10b", workflow)
 
     def test_sdxl_video_model_is_ignored_for_wan_bundle(self) -> None:
         bundle = self.backend._resolve_wan_bundle(

@@ -58,6 +58,15 @@ class ComfyUIBackend(BaseBackend):
     def _is_svd_name(name: str | None) -> bool:
         return bool(name) and "svd" in name.lower()
 
+    @staticmethod
+    def _wan_family(name: str | None) -> str:
+        lowered = (name or "").lower()
+        if "5b" in lowered or "ti2v" in lowered:
+            return "ti2v_5b"
+        if "i2v" in lowered:
+            return "i2v"
+        return "t2v"
+
     def _unet_names(self, info: dict[str, Any]) -> list[str]:
         return self._list_from_object_info(info, "UNETLoader", "unet_name")
 
@@ -342,8 +351,9 @@ class ComfyUIBackend(BaseBackend):
     def _build_wan_workflow(self, params: GenerationParams, image_name: str | None = None) -> dict[str, Any]:
         seed = self._resolve_seed(params)
         bundle = self._resolve_wan_bundle(params)
-        width, height = self._wan_dimensions(params, i2v=bool(image_name))
-        length = self._wan_length(params.frames)
+        width, height = self._wan_dimensions(params, bundle["family"])
+        length = self._wan_length(params.frames, bundle["family"])
+        fps = self._wan_fps(params.fps)
         steps, cfg, sampler, scheduler, lightning = self._wan_sampler_settings(params, bundle)
 
         high_model_node = "11"
@@ -411,56 +421,18 @@ class ComfyUIBackend(BaseBackend):
                 "inputs": {"model": [low_src, 0], "shift": 8.0 if lightning else 5.0},
             }
 
-        if image_name:
-            workflow["18"] = {"class_type": "LoadImage", "inputs": {"image": image_name}}
-            if self._object_info and "Wan22ImageToVideoLatent" in self._object_info:
-                workflow[latent_node] = {
-                    "class_type": "Wan22ImageToVideoLatent",
-                    "inputs": {
-                        "vae": [vae_node, 0],
-                        "width": width,
-                        "height": height,
-                        "length": length,
-                        "batch_size": 1,
-                        "start_image": ["18", 0],
-                    },
-                }
-            else:
-                workflow[latent_node] = {
-                    "class_type": "WanImageToVideo",
-                    "inputs": {
-                        "positive": [pos_node, 0],
-                        "negative": [neg_node, 0],
-                        "vae": [vae_node, 0],
-                        "width": width,
-                        "height": height,
-                        "length": length,
-                        "batch_size": 1,
-                        "start_image": ["18", 0],
-                    },
-                }
-                pos_node_from_i2v = [latent_node, 0]
-                neg_node_from_i2v = [latent_node, 1]
-                latent_from_i2v = [latent_node, 2]
-        else:
-            workflow[latent_node] = {
-                "class_type": "EmptyHunyuanLatentVideo",
-                "inputs": {
-                    "width": width,
-                    "height": height,
-                    "length": length,
-                    "batch_size": 1,
-                },
-            }
-
-        if image_name and self._object_info and "Wan22ImageToVideoLatent" not in self._object_info:
-            positive = pos_node_from_i2v
-            negative = neg_node_from_i2v
-            latent = latent_from_i2v
-        else:
-            positive = [pos_node, 0]
-            negative = [neg_node, 0]
-            latent = [latent_node, 0]
+        positive, negative, latent = self._attach_wan_latent(
+            workflow,
+            bundle["family"],
+            image_name,
+            width,
+            height,
+            length,
+            pos_node,
+            neg_node,
+            vae_node,
+            latent_node,
+        )
 
         split_at = max(1, steps // 2)
         if bundle["low_unet"]:
@@ -523,8 +495,67 @@ class ComfyUIBackend(BaseBackend):
             "class_type": "VAEDecode",
             "inputs": {"samples": [decode_from, 0], "vae": [vae_node, 0]},
         }
-        self._attach_video_output(workflow, params.fps or 16, image_node="30")
+        self._attach_video_output(workflow, fps, image_node="30")
         return workflow
+
+    def _attach_wan_latent(
+        self,
+        workflow: dict[str, Any],
+        family: str,
+        image_name: str | None,
+        width: int,
+        height: int,
+        length: int,
+        pos_node: str,
+        neg_node: str,
+        vae_node: str,
+        latent_node: str,
+    ) -> tuple[list[Any], list[Any], list[Any]]:
+        info = self._object_info or {}
+        use_22 = family == "ti2v_5b" and "Wan22ImageToVideoLatent" in info
+        if use_22:
+            inputs: dict[str, Any] = {
+                "vae": [vae_node, 0],
+                "width": width,
+                "height": height,
+                "length": length,
+                "batch_size": 1,
+            }
+            if image_name:
+                workflow["18"] = {"class_type": "LoadImage", "inputs": {"image": image_name}}
+                inputs["start_image"] = ["18", 0]
+            workflow[latent_node] = {"class_type": "Wan22ImageToVideoLatent", "inputs": inputs}
+            return [pos_node, 0], [neg_node, 0], [latent_node, 0]
+
+        if image_name:
+            workflow["18"] = {"class_type": "LoadImage", "inputs": {"image": image_name}}
+            i2v_inputs: dict[str, Any] = {
+                "positive": [pos_node, 0],
+                "negative": [neg_node, 0],
+                "vae": [vae_node, 0],
+                "width": width,
+                "height": height,
+                "length": length,
+                "batch_size": 1,
+                "start_image": ["18", 0],
+            }
+            clip_names = self._list_from_object_info(info, "CLIPVisionLoader", "clip_name")
+            if clip_names and "CLIPVisionEncode" in info:
+                clip_file = self._pick_name(clip_names, "clip_vision_h", "clip_vision") or clip_names[0]
+                workflow["17"] = {"class_type": "CLIPVisionLoader", "inputs": {"clip_name": clip_file}}
+                workflow["17b"] = {
+                    "class_type": "CLIPVisionEncode",
+                    "inputs": {"clip_vision": ["17", 0], "image": ["18", 0], "crop": "center"},
+                }
+                i2v_inputs["clip_vision_output"] = ["17b", 0]
+            workflow[latent_node] = {"class_type": "WanImageToVideo", "inputs": i2v_inputs}
+            return [latent_node, 0], [latent_node, 1], [latent_node, 2]
+
+        workflow[latent_node] = {
+            "class_type": "EmptyHunyuanLatentVideo",
+            "inputs": {"width": width, "height": height, "length": length, "batch_size": 1},
+        }
+        return [pos_node, 0], [neg_node, 0], [latent_node, 0]
 
     def _attach_video_output(self, workflow: dict[str, Any], fps: int, image_node: str) -> None:
         output_id = str(max(int(node_id) for node_id in workflow if node_id.isdigit()) + 1)
@@ -575,11 +606,11 @@ class ComfyUIBackend(BaseBackend):
 
         high = self._pick_name(
             unets,
-            *(["i2v", "high"] if i2v else []),
-            "t2v",
-            "high",
+            "5b",
+            "ti2v",
+            *(["i2v", "high"] if i2v else ["t2v", "high"]),
             "wan",
-        )
+        ) or unets[0]
         if preferred:
             if "low" in preferred.lower() and "high" not in preferred.lower():
                 partner = self._matching_pair(preferred, unets, "high_noise", "high")
@@ -600,7 +631,11 @@ class ComfyUIBackend(BaseBackend):
             high_lora = self._pick_name(loras, "lightx2v", "high") or high_lora
 
         clip = self._pick_name(clips, "umt5") or (clips[0] if clips else None)
-        vae = self._pick_name(vaes, "wan_2.1_vae", "wan2.1", "wan2.2_vae", "wan") or (vaes[0] if vaes else None)
+        family = self._wan_family(high)
+        if family == "ti2v_5b":
+            vae = self._pick_name(vaes, "wan2.2_vae", "wan2.2", "wan_2.1_vae", "wan") or (vaes[0] if vaes else None)
+        else:
+            vae = self._pick_name(vaes, "wan_2.1_vae", "wan2.1", "wan2.2_vae", "wan") or (vaes[0] if vaes else None)
         if not clip or not vae:
             raise RuntimeError(
                 "Wan 2.2 video needs UMT5 CLIP and a Wan VAE in ComfyUI. "
@@ -614,6 +649,7 @@ class ComfyUIBackend(BaseBackend):
             "clip": clip,
             "vae": vae,
             "lightning": bool(high_lora or low_lora),
+            "family": family,
         }
 
     @staticmethod
@@ -677,20 +713,45 @@ class ComfyUIBackend(BaseBackend):
     @staticmethod
     def _align(value: int, step: int, minimum: int, maximum: int) -> int:
         value = max(minimum, min(maximum, int(value)))
-        aligned = max(step, (value // step) * step)
+        aligned = int(round(value / step) * step)
+        aligned = max(step, aligned)
         return min(maximum, aligned)
 
-    def _wan_dimensions(self, params: GenerationParams, i2v: bool) -> tuple[int, int]:
-        step = 32 if i2v else 16
-        width = self._align(params.width or 832, step, step, 1280)
-        height = self._align(params.height or 480, step, step, 1280)
+    @staticmethod
+    def _wan_fps(fps: int | None) -> int:
+        value = int(fps or 16)
+        if value < 12:
+            return 16
+        return max(12, min(value, 24))
+
+    def _wan_profile(self, family: str) -> dict[str, int]:
+        if family == "ti2v_5b":
+            return {"max_pixels": 768 * 432, "max_edge": 768, "max_length": 49, "step": 32}
+        # 14B fp8 on a 12GB 4070 Ti — keep 480p-class, ~2s clips
+        return {"max_pixels": 640 * 384, "max_edge": 640, "max_length": 33, "step": 16}
+
+    def _wan_dimensions(self, params: GenerationParams, family: str) -> tuple[int, int]:
+        profile = self._wan_profile(family)
+        step = profile["step"]
+        width = max(step, int(params.width or 640))
+        height = max(step, int(params.height or 384))
+        max_pixels = profile["max_pixels"]
+        max_edge = profile["max_edge"]
+        scale = min(1.0, max_edge / max(width, height), (max_pixels / max(width * height, 1)) ** 0.5)
+        width = self._align(int(width * scale), step, step, max_edge)
+        height = self._align(int(height * scale), step, step, max_edge)
+        while width * height > max_pixels and (width > step or height > step):
+            if width >= height:
+                width = max(step, width - step)
+            else:
+                height = max(step, height - step)
         return width, height
 
-    @staticmethod
-    def _wan_length(frames: int) -> int:
-        frames = max(8, min(int(frames or 25), 81))
+    def _wan_length(self, frames: int, family: str = "t2v") -> int:
+        max_length = self._wan_profile(family)["max_length"]
+        frames = max(8, min(int(frames or 25), max_length))
         count = round((frames - 1) / 4)
-        return max(9, min(81, count * 4 + 1))
+        return max(9, min(max_length, count * 4 + 1))
 
     def _default_checkpoint(self) -> str:
         if self._object_info:

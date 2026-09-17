@@ -317,12 +317,15 @@ function setMode(mode) {
 
   els.generateBtn.querySelector(".btn-label").textContent = MODE_LABELS[mode] || "Generate";
 
-  if (isVideo) {
-    if (Number(els.width.value) === 1024 && Number(els.height.value) === 1024) {
-      els.width.value = 1024;
-      els.height.value = 576;
+    if (isVideo) {
+    if (Number(els.width.value) >= 1024 && Number(els.height.value) >= 576) {
+      els.width.value = 640;
+      els.height.value = 384;
     }
-    els.cfgScale.value = Math.min(Number(els.cfgScale.value), 4);
+    els.cfgScale.value = Math.min(Number(els.cfgScale.value), 1.5);
+    if (Number(els.fps.value) < 12) els.fps.value = 16;
+    if (Number(els.frames.value) > 33) els.frames.value = 33;
+    if (Number(els.steps.value) >= 20) els.steps.value = 4;
   }
 
   applyCapabilityHints();
