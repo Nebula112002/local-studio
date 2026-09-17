@@ -43,8 +43,8 @@ The UI auto-detects which backend is running. Use **Settings** to force a specif
 |------|---------|--------------|
 | **Text → Image** | ComfyUI or Forge | Standard prompt-to-image |
 | **Image → Image** | ComfyUI or Forge | Upload a source image; use **Similarity** to control how much stays the same |
-| **Text → Video** | ComfyUI + SVD | Generates a still frame from your prompt, then animates it |
-| **Image → Video** | ComfyUI + SVD | Animates your uploaded image into a short clip |
+| **Text → Video** | ComfyUI + Wan 2.2 (SVD fallback) | Prompt-to-video with the installed Wan UNETs |
+| **Image → Video** | ComfyUI + Wan 2.2 (SVD fallback) | Animates an uploaded still with Wan first-frame conditioning |
 
 ### Similarity slider (image modes)
 
@@ -53,8 +53,9 @@ Higher similarity = output stays closer to your source image. Lower = more creat
 ### Video setup (Stability Matrix)
 
 1. Launch **ComfyUI** (not Forge) for video modes
-2. Download an **SVD** model (e.g. `svd_xt` or `svd_xt_1_1`) in Stability Matrix
-3. In Local Studio Settings, set backend to **ComfyUI** (or auto-detect)
+2. Prefer **Wan 2.2** UNET + UMT5 + Wan VAE (this PC already has the T2V 14B fp8 pair and LightX2V 4-step LoRAs)
+3. SVD (`svd_xt`) is an optional fallback only — do not pick an SDXL image checkpoint as the video model
+4. In Local Studio Settings, set backend to **ComfyUI** (or auto-detect)
 
 ## Features
 
@@ -68,7 +69,7 @@ Higher similarity = output stays closer to your source image. Lower = more creat
 - **Local AI prompt assistant** — enhance prompts, generate scene ideas, and write negative prompts via **Ollama** or any OpenAI-compatible local API (no cloud, no filtering)
 - **Quality presets** — one-click photorealistic, cinematic, portrait, fashion, anime, and artistic settings
 - **Generation history** — every run is logged with prompt, seed, and settings; reuse any past generation in one click
-- **Video presets** — subtle, balanced, dynamic, and cinematic clip presets for SVD video
+- **Video presets** — subtle, balanced, dynamic, and cinematic clip presets for Wan 2.2 Lightning
 - **Toast notifications** — clean feedback instead of popup alerts
 - **Keyboard shortcut** — `Ctrl+Enter` to generate
 - **Auto-save** — PNGs written to `G:\Generation\Local-Studio\output` on this PC (toggle in Settings; override with `LOCAL_STUDIO_OUTPUT_DIR`)

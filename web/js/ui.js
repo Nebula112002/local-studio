@@ -390,6 +390,14 @@ const VideoPresets = {
     }
     if (preset.steps) document.getElementById("steps").value = preset.steps;
     if (preset.cfg_scale) document.getElementById("cfgScale").value = preset.cfg_scale;
+    if (preset.sampler) {
+      const sampler = document.getElementById("samplerSelect");
+      if (sampler) sampler.value = preset.sampler;
+    }
+    if (preset.scheduler) {
+      const scheduler = document.getElementById("schedulerSelect");
+      if (scheduler) scheduler.value = preset.scheduler;
+    }
     if (preset.width) document.getElementById("width").value = preset.width;
     if (preset.height) document.getElementById("height").value = preset.height;
     Toast.success(`Applied: ${preset.label}`);

@@ -48,7 +48,7 @@ class Automatic1111Backend(BaseBackend):
     async def generate(self, params: GenerationParams) -> GenerationResult:
         if params.mode in ("txt2video", "img2video"):
             raise RuntimeError(
-                "Video generation needs ComfyUI with an SVD model. "
+                "Video generation needs ComfyUI with a Wan 2.2 or SVD video model. "
                 "Switch backend to ComfyUI in Settings, or use Stability Matrix to launch it."
             )
         if params.mode == "img2img":

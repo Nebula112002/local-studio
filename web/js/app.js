@@ -262,6 +262,10 @@ async function restoreAppliedSettings() {
   } catch {}
   if (!saved) saved = loadAppliedLocal();
   if (saved) {
+    const videoModels = state.backend?.video_models || [];
+    if (saved.video_model && videoModels.length && !videoModels.includes(saved.video_model)) {
+      saved.video_model = "";
+    }
     writeSidebarSettings(saved);
     state.applied = readSidebarSettings();
     persistAppliedLocal(state.applied);
@@ -330,7 +334,7 @@ function applyCapabilityHints() {
   document.querySelectorAll(".mode-tab").forEach((tab) => {
     const supported = caps.includes(tab.dataset.mode);
     tab.classList.toggle("disabled", !supported);
-    tab.title = supported ? "" : "Requires ComfyUI with SVD for video modes";
+    tab.title = supported ? "" : "Requires ComfyUI with a Wan 2.2 or SVD video model";
   });
 }
 
@@ -391,7 +395,7 @@ function validateRequest() {
   }
   if ((state.mode === "txt2video" || state.mode === "img2video") && state.backend) {
     if (!state.backend.capabilities?.includes(state.mode)) {
-      Toast.error("Video modes need ComfyUI with an SVD model (e.g. svd_xt).");
+      Toast.error("Video modes need ComfyUI with a Wan 2.2 or SVD video model.");
       return false;
     }
   }
@@ -647,6 +651,9 @@ async function refreshBackend() {
     }
     fillSelect(els.samplerSelect, info.samplers, ["euler", "dpmpp_2m", "ddim"]);
     fillSelect(els.schedulerSelect, info.schedulers, ["normal", "karras"]);
+    if (draft.video_model && !(info.video_models || []).includes(draft.video_model)) {
+      draft.video_model = "";
+    }
     writeSidebarSettings(draft);
     state.backend = info;
     applyCapabilityHints();
@@ -939,7 +946,7 @@ function bindEvents() {
   document.querySelectorAll(".mode-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
       if (tab.classList.contains("disabled")) {
-        Toast.warn("This mode needs ComfyUI with an SVD video model.");
+        Toast.warn("This mode needs ComfyUI with a Wan 2.2 or SVD video model.");
         return;
       }
       setMode(tab.dataset.mode);
