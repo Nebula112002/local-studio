@@ -50,6 +50,8 @@ The UI auto-detects which backend is running. Use **Settings** to force a specif
 
 Higher similarity = output stays closer to your source image. Lower = more creative change. This maps to denoising strength under the hood. Similarity is **image → image only** — Animate uses the source as Wan's first frame instead.
 
+On Image → Image you can paint the area to replace. The paint is sent as a mask, so the rest of the photo stays. Describe what should be there in the prompt. This is for images of adults you have the right to edit.
+
 ### Video controls
 
 Frames, FPS, size, and Motion are yours. Wan snaps frame count to `4n+1` (max **81** on 14B). FPS 4–30 is honored (10 fps stays 10). Size is capped at **640×480** on the 12GB card so a 4070 Ti can finish the job. Motion maps to Wan's sampling shift (higher = more movement). LightX2V Lightning still runs at 4 steps. Presets (Subtle, Balanced, Dynamic, Cinematic, Slow clip) only apply when you click them.

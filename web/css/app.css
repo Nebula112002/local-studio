@@ -555,6 +555,31 @@ input:focus, select:focus, textarea:focus {
   border-radius: 6px;
   object-fit: contain;
 }
+.source-frame {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+}
+.dropzone .source-frame img {
+  max-height: 320px;
+  width: auto;
+  height: auto;
+}
+.source-frame canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+}
+.mask-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
 .dropzone p {
   margin: 0;
   color: var(--text-dim);

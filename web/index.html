@@ -79,9 +79,20 @@
             <div id="dropzoneEmpty">
               <p>Drop image or browse</p>
             </div>
-            <img id="sourcePreview" alt="Source preview" hidden />
+            <div id="sourceFrame" class="source-frame" hidden>
+              <img id="sourcePreview" alt="Source preview" />
+              <canvas id="maskCanvas"></canvas>
+            </div>
           </div>
           <button id="clearSourceBtn" class="btn ghost small" type="button" hidden>Remove</button>
+          <div id="maskTools" class="mask-tools" hidden>
+            <p class="hint">Paint the area to replace. Everything outside the paint stays. Describe the replacement in the prompt.</p>
+            <label class="field">
+              <span>Brush</span>
+              <input id="maskBrush" type="range" min="8" max="96" step="1" value="36" />
+            </label>
+            <button id="clearMaskBtn" class="btn ghost small" type="button">Clear paint</button>
+          </div>
         </section>
 
         <section class="panel-section" id="similaritySection" hidden>

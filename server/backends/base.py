@@ -25,6 +25,7 @@ class GenerationParams:
     # 0 = keep original, 1 = full redraw (img2img / img2video motion)
     denoise: float = 0.55
     init_image: str | None = None
+    mask: str | None = None
     frames: int = 25
     fps: int = 8
     video_model: str | None = None

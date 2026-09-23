@@ -47,6 +47,19 @@ class ComfyUIWorkflowTests(unittest.TestCase):
         self.assertEqual(workflow["3"]["inputs"]["sampler_name"], "dpmpp_2m")
         self.assertEqual(workflow["3"]["inputs"]["scheduler"], "karras")
         self.assertEqual(workflow["12"]["inputs"]["stop_at_clip_layer"], -2)
+        self.assertNotIn("19", workflow)
+        self.assertEqual(workflow["3"]["inputs"]["denoise"], 0.55)
+
+    def test_img2img_mask_limits_noise_to_paint(self) -> None:
+        workflow = self.backend._build_img2img_workflow(_params(denoise=0.4), "source.png", "mask.png")
+        self.assertEqual(workflow["16"]["inputs"]["image"], "mask.png")
+        self.assertEqual(workflow["17"]["class_type"], "ImageToMask")
+        self.assertEqual(workflow["17"]["inputs"]["channel"], "red")
+        self.assertEqual(workflow["18"]["class_type"], "GrowMask")
+        self.assertEqual(workflow["19"]["class_type"], "SetLatentNoiseMask")
+        self.assertEqual(workflow["3"]["inputs"]["latent_image"], ["19", 0])
+        self.assertEqual(workflow["3"]["inputs"]["denoise"], 1.0)
+        self.assertEqual(workflow["12"]["inputs"]["stop_at_clip_layer"], -2)
 
     def test_reported_seed_matches_ksampler(self) -> None:
         workflow = self.backend._build_txt2img_workflow(_params(seed=-1))

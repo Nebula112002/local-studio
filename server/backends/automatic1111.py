@@ -112,10 +112,17 @@ class Automatic1111Backend(BaseBackend):
             "batch_size": params.batch_size,
             "n_iter": 1,
             "init_images": [params.init_image],
-            "denoising_strength": params.denoise,
+            "denoising_strength": 1.0 if params.mask else params.denoise,
             "save_images": False,
             "send_images": True,
         }
+        if params.mask:
+            payload["mask"] = params.mask
+            payload["inpainting_mask_invert"] = 0
+            payload["inpainting_fill"] = 1
+            payload["inpaint_full_res"] = True
+            payload["inpaint_full_res_padding"] = 32
+            payload["mask_blur"] = 8
 
         if params.clip_skip > 1:
             payload["override_settings"] = {"CLIP_stop_at_last_layers": params.clip_skip}

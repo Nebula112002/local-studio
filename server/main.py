@@ -115,6 +115,7 @@ class GenerateRequest(BaseModel):
     clip_skip: int = 1
     denoise: float = Field(default=0.55, ge=0.0, le=1.0)
     init_image: str | None = None
+    mask: str | None = None
     frames: int = Field(default=25, ge=8, le=81)
     fps: int = Field(default=8, ge=4, le=30)
     video_model: str | None = None

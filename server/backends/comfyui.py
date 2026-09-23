@@ -147,7 +147,8 @@ class ComfyUIBackend(BaseBackend):
             if not params.init_image:
                 raise ValueError("Image-to-image requires a source image.")
             uploaded = await self._upload_image(params.init_image)
-            return await self._run_workflow(self._build_img2img_workflow(params, uploaded), params)
+            mask_name = await self._upload_image(params.mask) if params.mask else None
+            return await self._run_workflow(self._build_img2img_workflow(params, uploaded, mask_name), params)
         if params.mode in ("img2video", "txt2video"):
             return await self._generate_video(params, info)
 
@@ -266,9 +267,17 @@ class ComfyUIBackend(BaseBackend):
         self._apply_clip_skip(workflow, params)
         return workflow
 
-    def _build_img2img_workflow(self, params: GenerationParams, image_name: str) -> dict[str, Any]:
+    def _build_img2img_workflow(
+        self,
+        params: GenerationParams,
+        image_name: str,
+        mask_name: str | None = None,
+    ) -> dict[str, Any]:
         seed = self._resolve_seed(params)
         model = params.model or self._default_checkpoint()
+        latent_image: list[Any] = ["11", 0]
+        # A painted mask limits the edit. Denoise 1 keeps everything outside the paint.
+        denoise = 1.0 if mask_name else params.denoise
         workflow: dict[str, Any] = {
             "10": {"class_type": "LoadImage", "inputs": {"image": image_name}},
             "11": {"class_type": "VAEEncode", "inputs": {"pixels": ["10", 0], "vae": ["4", 2]}},
@@ -280,11 +289,11 @@ class ComfyUIBackend(BaseBackend):
                     "cfg": params.cfg_scale,
                     "sampler_name": params.sampler or "euler",
                     "scheduler": params.scheduler or "normal",
-                    "denoise": params.denoise,
+                    "denoise": denoise,
                     "model": ["4", 0],
                     "positive": ["6", 0],
                     "negative": ["7", 0],
-                    "latent_image": ["11", 0],
+                    "latent_image": latent_image,
                 },
             },
             "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": model}},
@@ -293,6 +302,21 @@ class ComfyUIBackend(BaseBackend):
             "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
             "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": "local_studio", "images": ["8", 0]}},
         }
+        if mask_name:
+            workflow["16"] = {"class_type": "LoadImage", "inputs": {"image": mask_name}}
+            workflow["17"] = {
+                "class_type": "ImageToMask",
+                "inputs": {"image": ["16", 0], "channel": "red"},
+            }
+            workflow["18"] = {
+                "class_type": "GrowMask",
+                "inputs": {"mask": ["17", 0], "expand": 8, "tapered_corners": True},
+            }
+            workflow["19"] = {
+                "class_type": "SetLatentNoiseMask",
+                "inputs": {"samples": ["11", 0], "mask": ["18", 0]},
+            }
+            workflow["3"]["inputs"]["latent_image"] = ["19", 0]
         self._apply_clip_skip(workflow, params)
         return workflow
 

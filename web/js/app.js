@@ -17,6 +17,7 @@ const state = {
   galleryItems: [],
   mode: "txt2img",
   sourceImageB64: null,
+  maskDirty: false,
   applied: null,
 };
 
@@ -32,6 +33,11 @@ const els = {
   dropzone: $("dropzone"),
   dropzoneEmpty: $("dropzoneEmpty"),
   sourcePreview: $("sourcePreview"),
+  sourceFrame: $("sourceFrame"),
+  maskCanvas: $("maskCanvas"),
+  maskTools: $("maskTools"),
+  maskBrush: $("maskBrush"),
+  clearMaskBtn: $("clearMaskBtn"),
   clearSourceBtn: $("clearSourceBtn"),
   similaritySection: $("similaritySection"),
   similarity: $("similarity"),
@@ -334,6 +340,7 @@ function setMode(mode) {
 
   els.sourceImageSection.hidden = !needsImage;
   els.similaritySection.hidden = mode !== "img2img";
+  syncMaskTools();
   els.videoSection.hidden = !isVideo;
   els.videoModelField.classList.toggle("hidden", !isVideo);
   els.checkpointField.classList.toggle("hidden", isVideo && mode === "img2video");
@@ -398,6 +405,7 @@ function getPayload() {
     clip_skip: Number(gen.clip_skip) || 1,
     denoise: similarityToDenoise(Number(gen.similarity)),
     init_image: state.sourceImageB64,
+    mask: state.mode === "img2img" ? exportMask() : null,
     frames: Number(gen.frames),
     fps: Number(gen.fps),
     video_model: gen.video_model || null,
@@ -698,19 +706,145 @@ function readFileAsB64(file) {
 
 function setSourceImage(b64) {
   state.sourceImageB64 = b64;
+  state.maskDirty = false;
   els.sourcePreview.src = imageSrc(b64);
   els.sourcePreview.hidden = false;
+  els.sourceFrame.hidden = false;
   els.dropzoneEmpty.hidden = true;
   els.clearSourceBtn.hidden = false;
+  els.sourcePreview.onload = () => {
+    fitMaskCanvas(true);
+    syncMaskTools();
+  };
+  syncMaskTools();
 }
 
 function clearSourceImage() {
   state.sourceImageB64 = null;
+  state.maskDirty = false;
   els.sourcePreview.hidden = true;
   els.sourcePreview.src = "";
+  els.sourceFrame.hidden = true;
   els.dropzoneEmpty.hidden = false;
   els.clearSourceBtn.hidden = true;
   els.sourceImageInput.value = "";
+  clearMask();
+  syncMaskTools();
+}
+
+function syncMaskTools() {
+  const show = state.mode === "img2img" && !!state.sourceImageB64;
+  if (els.maskTools) els.maskTools.hidden = !show;
+  if (els.maskCanvas) els.maskCanvas.hidden = !show;
+}
+
+function fitMaskCanvas(reset) {
+  const img = els.sourcePreview;
+  const canvas = els.maskCanvas;
+  if (!img || !canvas || !img.naturalWidth) return;
+  if (reset || canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    state.maskDirty = false;
+  }
+}
+
+function clearMask() {
+  const canvas = els.maskCanvas;
+  if (!canvas) return;
+  canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+  state.maskDirty = false;
+}
+
+function maskPoint(event) {
+  const canvas = els.maskCanvas;
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (event.clientX - rect.left) * (canvas.width / rect.width),
+    y: (event.clientY - rect.top) * (canvas.height / rect.height),
+  };
+}
+
+const maskPaint = { drawing: false, last: null };
+
+function paintMaskStroke(point) {
+  const canvas = els.maskCanvas;
+  const ctx = canvas.getContext("2d");
+  const rect = canvas.getBoundingClientRect();
+  const scale = canvas.width / Math.max(rect.width, 1);
+  const size = Math.max(4, Number(els.maskBrush.value) || 36) * scale;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(255, 90, 130, 0.55)";
+  ctx.fillStyle = "rgba(255, 90, 130, 0.55)";
+  ctx.lineWidth = size;
+  if (!maskPaint.last) {
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, size / 2, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(maskPaint.last.x, maskPaint.last.y);
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+  }
+  maskPaint.last = point;
+  state.maskDirty = true;
+}
+
+function exportMask() {
+  const canvas = els.maskCanvas;
+  if (!canvas || canvas.hidden || !state.maskDirty || !canvas.width) return null;
+  const ctx = canvas.getContext("2d");
+  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const out = document.createElement("canvas");
+  out.width = canvas.width;
+  out.height = canvas.height;
+  const outCtx = out.getContext("2d");
+  const copy = outCtx.createImageData(out.width, out.height);
+  let painted = false;
+  for (let i = 0; i < pixels.data.length; i += 4) {
+    const on = pixels.data[i + 3] > 12;
+    const value = on ? 255 : 0;
+    if (on) painted = true;
+    copy.data[i] = value;
+    copy.data[i + 1] = value;
+    copy.data[i + 2] = value;
+    copy.data[i + 3] = 255;
+  }
+  if (!painted) return null;
+  outCtx.putImageData(copy, 0, 0);
+  return out.toDataURL("image/png").split(",")[1];
+}
+
+function bindMaskPaint() {
+  const canvas = els.maskCanvas;
+  if (!canvas) return;
+  canvas.addEventListener("pointerdown", (event) => {
+    if (canvas.hidden) return;
+    event.preventDefault();
+    event.stopPropagation();
+    canvas.setPointerCapture(event.pointerId);
+    maskPaint.drawing = true;
+    maskPaint.last = null;
+    paintMaskStroke(maskPoint(event));
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    if (!maskPaint.drawing) return;
+    event.preventDefault();
+    paintMaskStroke(maskPoint(event));
+  });
+  const endStroke = () => {
+    maskPaint.drawing = false;
+    maskPaint.last = null;
+  };
+  canvas.addEventListener("pointerup", endStroke);
+  canvas.addEventListener("pointercancel", endStroke);
+  els.clearMaskBtn?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    clearMask();
+  });
 }
 
 function populateAssistantModels(status, configuredModel) {
@@ -1005,7 +1139,10 @@ function bindPresets() {
 }
 
 function bindSourceImage() {
-  els.dropzone.addEventListener("click", () => els.sourceImageInput.click());
+  els.dropzone.addEventListener("click", (event) => {
+    if (event.target.closest("#sourceFrame")) return;
+    els.sourceImageInput.click();
+  });
   els.clearSourceBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     clearSourceImage();
@@ -1095,6 +1232,7 @@ async function init() {
   Toast.init();
   bindPresets();
   bindSourceImage();
+  bindMaskPaint();
   bindEvents();
   ProfileManager.bindEvents();
   HistoryPanel.bindEvents();
