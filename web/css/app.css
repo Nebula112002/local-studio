@@ -580,6 +580,10 @@ input:focus, select:focus, textarea:focus {
   gap: 0.35rem;
   margin-top: 0.45rem;
 }
+.mask-tools[hidden],
+.source-frame canvas[hidden] {
+  display: none;
+}
 .dropzone p {
   margin: 0;
   color: var(--text-dim);
