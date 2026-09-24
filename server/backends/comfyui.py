@@ -38,6 +38,7 @@ class ComfyUIBackend(BaseBackend):
             response = await client.get(f"{self.base_url}/object_info")
             response.raise_for_status()
             self._object_info = response.json()
+            self._object_info_live = True
             return self._object_info
 
     def _list_from_object_info(self, info: dict[str, Any], node: str, field: str) -> list[str]:
@@ -110,13 +111,32 @@ class ComfyUIBackend(BaseBackend):
     def _has_svd_pipeline(self, info: dict[str, Any]) -> bool:
         return "SVD_img2vid_Conditioning" in info and bool(self._svd_checkpoints(info))
 
+    async def _live_names(self, folder: str) -> list[str] | None:
+        if not getattr(self, "_object_info_live", False):
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{self.base_url}/models/{folder}")
+                response.raise_for_status()
+                data = response.json()
+                return data if isinstance(data, list) else None
+        except (httpx.HTTPError, ValueError):
+            return None
+
     async def get_info(self) -> BackendInfo:
         info = await self._fetch_object_info()
-        models = [
-            model
-            for model in self._list_from_object_info(info, "CheckpointLoaderSimple", "ckpt_name")
-            if not self._is_video_checkpoint_name(model)
-        ]
+        live_checkpoints = await self._live_names("checkpoints")
+        checkpoint_names = live_checkpoints or self._list_from_object_info(
+            info, "CheckpointLoaderSimple", "ckpt_name"
+        )
+        models = [model for model in checkpoint_names if not self._is_video_checkpoint_name(model)]
+        self._checkpoint_names = models
+        live_unets = await self._live_names("diffusion_models")
+        if live_unets:
+            info = {
+                **info,
+                "UNETLoader": {"input": {"required": {"unet_name": [live_unets]}}},
+            }
         samplers = self._list_from_object_info(info, "KSampler", "sampler_name")
         schedulers = self._list_from_object_info(info, "KSampler", "scheduler")
         if not schedulers:
@@ -787,19 +807,20 @@ class ComfyUIBackend(BaseBackend):
         return max(9, min(max_length, count * 4 + 1))
 
     def _default_checkpoint(self) -> str:
-        if self._object_info:
+        models = list(getattr(self, "_checkpoint_names", []) or [])
+        if not models and self._object_info:
             models = [
                 model
                 for model in self._list_from_object_info(self._object_info, "CheckpointLoaderSimple", "ckpt_name")
                 if not self._is_video_checkpoint_name(model)
             ]
-            if models:
-                preferred = ("realisticvision", "juggernaut", "epicrealism", "realism")
-                for needle in preferred:
-                    for model in models:
-                        if needle in model.lower():
-                            return model
-                return models[0]
+        if models:
+            preferred = ("juggernaut", "epicrealism", "cyberrealistic", "realisticvision", "realism")
+            for needle in preferred:
+                for model in models:
+                    if needle in model.lower():
+                        return model
+            return models[0]
         return "v1-5-pruned-emaonly.safetensors"
 
     def _default_video_model(self) -> str:

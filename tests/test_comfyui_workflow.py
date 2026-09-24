@@ -42,6 +42,18 @@ class ComfyUIWorkflowTests(unittest.TestCase):
         self.assertNotIn("12", workflow)
         self.assertEqual(workflow["6"]["inputs"]["clip"], ["4", 1])
 
+    def test_default_checkpoint_prefers_juggernaut_on_12gb(self) -> None:
+        self.backend._checkpoint_names = [
+            "cyberrealistic_final.safetensors",
+            "realisticVisionV60B1_v60B1VAE.safetensors",
+            "epicrealismXL_pureFix.safetensors",
+            "juggernautXL_ragnarokBy.safetensors",
+        ]
+        self.assertEqual(
+            self.backend._default_checkpoint(),
+            "juggernautXL_ragnarokBy.safetensors",
+        )
+
     def test_img2img_uses_sampler(self) -> None:
         workflow = self.backend._build_img2img_workflow(_params(), "source.png")
         self.assertEqual(workflow["3"]["inputs"]["sampler_name"], "dpmpp_2m")
