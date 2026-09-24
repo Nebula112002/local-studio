@@ -302,7 +302,6 @@ const HistoryPanel = {
       Toast.success(n ? `Deleted ${n} file${n === 1 ? "" : "s"} from disk` : "Deleted from history");
       await this.load();
       if (typeof loadGalleryFromDisk === "function") {
-        document.getElementById("gallery").innerHTML = "";
         await loadGalleryFromDisk();
       }
     } catch (err) {
@@ -338,8 +337,6 @@ const HistoryPanel = {
       const files = result.files_removed ?? 0;
       Toast.success(`Removed ${entries} history item${entries === 1 ? "" : "s"}, ${files} file${files === 1 ? "" : "s"}`);
       await this.load();
-      const gallery = document.getElementById("gallery");
-      if (gallery) gallery.innerHTML = "";
       if (typeof loadGalleryFromDisk === "function") {
         await loadGalleryFromDisk();
       }

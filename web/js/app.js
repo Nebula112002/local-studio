@@ -602,12 +602,24 @@ async function deleteOutputFile(filename, cardEl) {
   }
 }
 
+let galleryLoadSeq = 0;
+
 async function loadGalleryFromDisk() {
+  const seq = ++galleryLoadSeq;
   try {
     const files = await API.get("/api/output");
-    if (!Array.isArray(files) || !files.length) return;
-    // Render oldest→newest so prepend leaves newest on top
-    for (const f of [...files].reverse().slice(-24)) {
+    if (seq !== galleryLoadSeq) return;
+    if (!Array.isArray(files)) return;
+    if (els.gallery) els.gallery.innerHTML = "";
+    const seen = new Set();
+    const unique = [];
+    for (const f of files) {
+      const name = f.filename || "";
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      unique.push(f);
+    }
+    for (const f of [...unique].reverse().slice(-24)) {
       const isVideo = f.media_type === "video";
       addMediaCard({
         images: isVideo ? [] : [f.filename],

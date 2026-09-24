@@ -763,7 +763,10 @@ async def output_delete(filename: str) -> dict[str, Any]:
     index = _load_index()
     next_index = []
     for entry in index:
-        files = [f for f in (entry.get("files") or []) if Path(str(f)).name != safe_name]
+        def _same_file(ref: str) -> bool:
+            name = str(ref).replace("\\", "/").lstrip("/")
+            return name == safe_name or Path(name).name == Path(safe_name).name
+        files = [f for f in (entry.get("files") or []) if not _same_file(f)]
         if not files and entry.get("files"):
             continue
         entry = {**entry, "files": files}

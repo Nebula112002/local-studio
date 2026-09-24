@@ -130,26 +130,76 @@ def _parse_timestamp(value: Any) -> datetime | None:
     return ts.astimezone(timezone.utc)
 
 
-def _delete_entry_files(entry: dict[str, Any]) -> list[str]:
+def _output_files():
+    out = _output_dir()
+    media = {".png", ".jpg", ".jpeg", ".webp", ".mp4", ".webm", ".gif"}
+    files = []
+    for path in out.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in media:
+            continue
+        rel = path.relative_to(out)
+        if any(part.startswith(".") for part in rel.parts):
+            continue
+        files.append(path)
+    return files
+
+
+def _find_output_file(name: str) -> Path | None:
     out = _output_dir().resolve()
+    rel = Path(str(name).replace("\\", "/"))
+    if rel.is_absolute() or any(part == ".." for part in rel.parts):
+        return None
+    direct = (out / rel).resolve()
+    try:
+        direct.relative_to(out)
+    except ValueError:
+        return None
+    if direct.is_file():
+        return direct
+    base = rel.name
+    for path in _output_files():
+        if path.name == base:
+            return path.resolve()
+    return None
+
+
+def _delete_entry_files(entry: dict[str, Any]) -> list[str]:
     deleted_files: list[str] = []
     for name in entry.get("files") or []:
-        candidate = (out / Path(str(name)).name).resolve()
-        try:
-            candidate.relative_to(out)
-        except ValueError:
+        candidate = _find_output_file(str(name))
+        if candidate is None or not candidate.is_file():
             continue
-        if candidate.is_file():
-            candidate.unlink()
-            deleted_files.append(candidate.name)
+        rel = candidate.relative_to(_output_dir().resolve()).as_posix()
+        candidate.unlink()
+        deleted_files.append(rel)
     return deleted_files
 
 
-def delete_history_bulk(*, within_hours: float | None = None, clear_all: bool = False) -> dict[str, Any]:
-    """Delete history entries (and their files).
+def _unlink_output(path: Path, deleted_files: list[str]) -> None:
+    out = _output_dir().resolve()
+    try:
+        rel = path.resolve().relative_to(out).as_posix()
+    except ValueError:
+        return
+    if rel in deleted_files or not path.is_file():
+        return
+    path.unlink()
+    deleted_files.append(rel)
 
-    within_hours: remove entries created in the last N hours.
-    clear_all: wipe the full history index and all media in the output folder.
+
+def _delete_files_since(cutoff: float | None, deleted_files: list[str]) -> None:
+    """Remove library media in the window. cutoff None removes every listed file."""
+    for path in _output_files():
+        if cutoff is not None and path.stat().st_mtime < cutoff:
+            continue
+        _unlink_output(path, deleted_files)
+
+
+def delete_history_bulk(*, within_hours: float | None = None, clear_all: bool = False) -> dict[str, Any]:
+    """Delete history entries and the library files in that same window.
+
+    within_hours: remove entries and media from the last N hours.
+    clear_all: wipe the history index and every media file Studio lists.
     """
     if not clear_all and within_hours is None:
         raise ValueError("Provide within_hours or clear_all")
@@ -166,20 +216,7 @@ def delete_history_bulk(*, within_hours: float | None = None, clear_all: bool = 
         for entry in index:
             deleted_files.extend(_delete_entry_files(entry))
             removed_entries += 1
-        # Also wipe orphan media left in the output folder.
-        out = _output_dir()
-        for path in out.iterdir():
-            if not path.is_file():
-                continue
-            if path.name == HISTORY_INDEX or path.suffix.lower() == ".json":
-                continue
-            if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".webm"}:
-                try:
-                    path.unlink()
-                    if path.name not in deleted_files:
-                        deleted_files.append(path.name)
-                except OSError:
-                    pass
+        _delete_files_since(None, deleted_files)
         _save_index([])
         return {
             "removed_entries": removed_entries,
@@ -199,6 +236,7 @@ def delete_history_bulk(*, within_hours: float | None = None, clear_all: bool = 
         else:
             keep.append(entry)
 
+    _delete_files_since(cutoff, deleted_files)
     _save_index(keep)
     return {
         "removed_entries": removed_entries,
@@ -213,8 +251,7 @@ def scan_output_files() -> list[dict[str, Any]]:
     """List files in output directory for gallery restore."""
     out = _output_dir()
     items: list[dict[str, Any]] = []
-    media = {".png", ".jpg", ".jpeg", ".webp", ".mp4", ".webm", ".gif"}
-    files = [path for path in out.rglob("*") if path.is_file() and path.suffix.lower() in media]
+    files = _output_files()
     files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
     for path in files:
         if path.name == HISTORY_INDEX or path.suffix.lower() == ".json":
