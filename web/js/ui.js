@@ -295,15 +295,20 @@ const HistoryPanel = {
     if (typeof updateApplyDirty === "function") updateApplyDirty();
   },
 
+  dropGalleryFiles(names) {
+    const gone = new Set(names || []);
+    document.querySelectorAll("#gallery .card").forEach((card) => {
+      if (gone.has(card.dataset.filename)) card.remove();
+    });
+  },
+
   async remove(id) {
     try {
       const result = await API.del(`/api/history/${id}`);
       const n = result.files_removed ?? result.deleted_files?.length ?? 0;
       Toast.success(n ? `Deleted ${n} file${n === 1 ? "" : "s"} from disk` : "Deleted from history");
+      this.dropGalleryFiles(result.deleted_files);
       await this.load();
-      if (typeof loadGalleryFromDisk === "function") {
-        await loadGalleryFromDisk();
-      }
     } catch (err) {
       Toast.error(err.message || "Delete failed");
     }
@@ -311,35 +316,52 @@ const HistoryPanel = {
 
   async clearBatch() {
     const select = document.getElementById("historyClearRange");
-    const value = select?.value || "1";
+    const value = select?.value || "shown";
+    const shown = value === "shown";
     const clearAll = value === "all";
-    const hours = clearAll ? null : Number(value);
-    const label = clearAll
-      ? "ALL history and images"
-      : hours === 1
-        ? "the past hour"
-        : hours === 12
-          ? "the past 12 hours"
-          : hours === 24
-            ? "the past day"
-            : `the past ${hours} hours`;
+    const hours = shown || clearAll ? null : Number(value);
+    const label = shown
+      ? "the pictures on this screen"
+      : clearAll
+        ? "ALL history and images"
+        : hours === 1
+          ? "the past hour"
+          : hours === 12
+            ? "the past 12 hours"
+            : hours === 24
+              ? "the past day"
+              : `the past ${hours} hours`;
 
     if (!window.confirm(`Delete ${label} from this device? This cannot be undone.`)) {
       return;
     }
 
     try {
-      const result = await API.post("/api/history/clear", {
+      let result;
+      if (shown) {
+        const filenames = [...document.querySelectorAll("#gallery .card")]
+          .map((card) => card.dataset.filename)
+          .filter(Boolean);
+        if (!filenames.length) {
+          Toast.error("No pictures on screen to delete");
+          return;
+        }
+        result = await API.post("/api/output/delete", { filenames });
+        this.dropGalleryFiles(result.deleted_files || filenames);
+        Toast.success(`Deleted ${result.files_removed ?? filenames.length} picture${(result.files_removed ?? filenames.length) === 1 ? "" : "s"}`);
+        return;
+      }
+      result = await API.post("/api/history/clear", {
         clear_all: clearAll,
         within_hours: hours,
       });
       const entries = result.removed_entries ?? 0;
       const files = result.files_removed ?? 0;
-      Toast.success(`Removed ${entries} history item${entries === 1 ? "" : "s"}, ${files} file${files === 1 ? "" : "s"}`);
+      this.dropGalleryFiles(result.deleted_files);
+      Toast.success(files
+        ? `Removed ${files} file${files === 1 ? "" : "s"}`
+        : "No files in that time range");
       await this.load();
-      if (typeof loadGalleryFromDisk === "function") {
-        await loadGalleryFromDisk();
-      }
     } catch (err) {
       Toast.error(err.message || "Clear failed");
     }

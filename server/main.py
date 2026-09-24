@@ -17,6 +17,7 @@ from server.paths import agent_output_dir, resolve_output_file
 from server.backends.base import BackendInfo, BaseBackend, GenerationParams, GenerationResult
 from server.history import (
     delete_history_bulk,
+    delete_named_files,
     delete_history_item,
     list_history,
     record_generation,
@@ -740,6 +741,19 @@ async def history_delete(item_id: str) -> dict[str, Any]:
     return {"status": "deleted", **result}
 
 
+
+class DeleteOutputRequest(BaseModel):
+    filenames: list[str] = Field(default_factory=list, max_length=200)
+
+
+@app.post("/api/output/delete")
+async def output_delete_many(request: DeleteOutputRequest) -> dict[str, Any]:
+    if not request.filenames:
+        raise HTTPException(status_code=400, detail="No files selected")
+    result = delete_named_files(request.filenames)
+    return {"status": "deleted", **result}
+
+
 @app.get("/api/output")
 async def output_list() -> list[dict[str, Any]]:
     return scan_output_files()
@@ -793,7 +807,15 @@ async def output_file(filename: str) -> FileResponse:
 
 @app.get("/")
 async def index() -> FileResponse:
-    return FileResponse(WEB_DIR / "index.html")
+    return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-store"})
 
 
-app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+class NoStoreStatic(StaticFiles):
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if path.endswith((".js", ".css", ".html")):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+
+app.mount("/static", NoStoreStatic(directory=WEB_DIR), name="static")

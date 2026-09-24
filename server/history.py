@@ -195,6 +195,26 @@ def _delete_files_since(cutoff: float | None, deleted_files: list[str]) -> None:
         _unlink_output(path, deleted_files)
 
 
+def delete_named_files(names: list[str]) -> dict[str, Any]:
+    """Delete specific library files by the gallery's relative path."""
+    deleted: list[str] = []
+    for name in names:
+        path = _find_output_file(str(name))
+        if path is None:
+            continue
+        _unlink_output(path, deleted)
+    if deleted:
+        removed = {Path(name).name for name in deleted}
+        index = []
+        for entry in _load_index():
+            files = [f for f in (entry.get("files") or []) if Path(str(f)).name not in removed and str(f).replace("\\", "/") not in deleted]
+            if entry.get("files") and not files:
+                continue
+            index.append({**entry, "files": files})
+        _save_index(index)
+    return {"files_removed": len(deleted), "deleted_files": deleted}
+
+
 def delete_history_bulk(*, within_hours: float | None = None, clear_all: bool = False) -> dict[str, Any]:
     """Delete history entries and the library files in that same window.
 
