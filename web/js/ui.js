@@ -186,11 +186,11 @@ const HistoryPanel = {
         ? `<div class="history-media">
             ${images.map((f) => `
               <button type="button" class="history-thumb" data-action="open-image" data-file="${f}" title="Open image">
-                <img src="/api/output/${encodeURIComponent(f)}" alt="" loading="lazy" />
+                <img src="${outputUrl(f)}" alt="" loading="lazy" />
               </button>`).join("")}
             ${videos.map((f) => `
               <button type="button" class="history-thumb history-thumb-video" data-action="open-video" data-file="${f}" title="Open video">
-                <video src="/api/output/${encodeURIComponent(f)}" muted preload="metadata"></video>
+                <video src="${outputUrl(f)}" muted preload="metadata"></video>
               </button>`).join("")}
           </div>`
         : `<div class="history-media history-media-empty" title="No image saved for this run"><span>No image</span></div>`;
@@ -221,7 +221,7 @@ const HistoryPanel = {
     });
     panel.querySelectorAll('[data-action="open-image"]').forEach((btn) => {
       btn.addEventListener("click", () => {
-        const url = `/api/output/${encodeURIComponent(btn.dataset.file)}`;
+        const url = outputUrl(btn.dataset.file);
         const img = document.getElementById("lightboxImg");
         const vid = document.getElementById("lightboxVideo");
         const meta = document.getElementById("lightboxMeta");
@@ -238,7 +238,7 @@ const HistoryPanel = {
     });
     panel.querySelectorAll('[data-action="open-video"]').forEach((btn) => {
       btn.addEventListener("click", () => {
-        const url = `/api/output/${encodeURIComponent(btn.dataset.file)}`;
+        const url = outputUrl(btn.dataset.file);
         const img = document.getElementById("lightboxImg");
         const vid = document.getElementById("lightboxVideo");
         const meta = document.getElementById("lightboxMeta");

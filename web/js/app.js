@@ -432,6 +432,10 @@ function validateRequest() {
   return true;
 }
 
+function outputUrl(file) {
+  return `/api/output/${String(file).split(/[\\/]/).map(encodeURIComponent).join("/")}`;
+}
+
 function imageSrc(b64, mime = "image/png") {
   return `data:${mime};base64,${b64}`;
 }
@@ -473,16 +477,16 @@ function addMediaCard({ images = [], videos = [], seeds, prompt, label, status =
     const video = card.querySelector("video");
     const srcIsFile = file && (!vid || String(vid).endsWith(".mp4") || String(vid) === file);
     if (srcIsFile) {
-      video.src = `/api/output/${encodeURIComponent(file)}`;
+      video.src = outputUrl(file);
     }
     video.addEventListener("click", () => {
-      if (srcIsFile) window.open(`/api/output/${encodeURIComponent(file)}`, "_blank");
+      if (srcIsFile) window.open(outputUrl(file), "_blank");
       else openLightbox(null, vid, seed, prompt, true);
     });
     video.addEventListener("mouseenter", () => video.play().catch(() => {}));
     video.addEventListener("mouseleave", () => { video.pause(); video.currentTime = 0; });
     card.querySelector('[data-action="download"]').addEventListener("click", () => {
-      if (file) window.open(`/api/output/${encodeURIComponent(file)}`, "_blank");
+      if (file) window.open(outputUrl(file), "_blank");
       else downloadVideo(vid, seed);
     });
     card.querySelector('[data-action="reuse"]').addEventListener("click", () => reuseSeed(seed));
@@ -498,7 +502,7 @@ function addMediaCard({ images = [], videos = [], seeds, prompt, label, status =
     card.className = "card";
     if (file) card.dataset.filename = file;
     const imgSrc = isFileRef
-      ? `/api/output/${encodeURIComponent(file)}`
+      ? outputUrl(file)
       : imageSrc(img);
     card.innerHTML = `
       <img src="${imgSrc}" alt="Generated image" />
@@ -522,7 +526,7 @@ function addMediaCard({ images = [], videos = [], seeds, prompt, label, status =
     card.querySelector('[data-action="download"]').addEventListener("click", () => {
       if (file) {
         const a = document.createElement("a");
-        a.href = `/api/output/${encodeURIComponent(file)}`;
+        a.href = outputUrl(file);
         a.download = file;
         a.click();
       } else downloadImage(img, seed);
@@ -532,7 +536,7 @@ function addMediaCard({ images = [], videos = [], seeds, prompt, label, status =
       if (isFileRef) {
         // fetch as blob -> b64 for img2video source
         try {
-          const res = await fetch(`/api/output/${encodeURIComponent(file)}`);
+          const res = await fetch(outputUrl(file));
           const blob = await res.blob();
           const b64 = await new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -549,7 +553,7 @@ function addMediaCard({ images = [], videos = [], seeds, prompt, label, status =
     card.querySelector('[data-action="set-ref"]')?.addEventListener("click", async () => {
       if (isFileRef) {
         try {
-          const res = await fetch(`/api/output/${encodeURIComponent(file)}`);
+          const res = await fetch(outputUrl(file));
           const blob = await res.blob();
           const b64 = await new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -566,7 +570,7 @@ function addMediaCard({ images = [], videos = [], seeds, prompt, label, status =
     card.querySelector('[data-action="set-thumb"]')?.addEventListener("click", async () => {
       if (isFileRef) {
         try {
-          const res = await fetch(`/api/output/${encodeURIComponent(file)}`);
+          const res = await fetch(outputUrl(file));
           const blob = await res.blob();
           const b64 = await new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -588,7 +592,7 @@ function addMediaCard({ images = [], videos = [], seeds, prompt, label, status =
 async function deleteOutputFile(filename, cardEl) {
   if (!filename) return;
   try {
-    const result = await API.del(`/api/output/${encodeURIComponent(filename)}`);
+    const result = await API.del(outputUrl(filename));
     cardEl?.remove();
     const n = result.files_removed ?? 1;
     Toast.success(n ? `Deleted ${filename}` : "Deleted");

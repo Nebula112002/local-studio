@@ -213,23 +213,20 @@ def scan_output_files() -> list[dict[str, Any]]:
     """List files in output directory for gallery restore."""
     out = _output_dir()
     items: list[dict[str, Any]] = []
-    for path in sorted(out.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True):
-        if path.name == HISTORY_INDEX or path.suffix == ".json":
+    media = {".png", ".jpg", ".jpeg", ".webp", ".mp4", ".webm", ".gif"}
+    files = [path for path in out.rglob("*") if path.is_file() and path.suffix.lower() in media]
+    files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    for path in files:
+        if path.name == HISTORY_INDEX or path.suffix.lower() == ".json":
             continue
-        if path.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
-            items.append({
-                "filename": path.name,
-                "path": str(path),
-                "media_type": "image",
-                "size": path.stat().st_size,
-                "modified": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(),
-            })
-        elif path.suffix.lower() in (".mp4", ".webm", ".gif"):
-            items.append({
-                "filename": path.name,
-                "path": str(path),
-                "media_type": "video",
-                "size": path.stat().st_size,
-                "modified": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(),
-            })
-    return items[:200]
+        rel = path.relative_to(out).as_posix()
+        kind = "video" if path.suffix.lower() in (".mp4", ".webm", ".gif") else "image"
+        items.append({
+            "filename": rel,
+            "media_type": kind,
+            "size": path.stat().st_size,
+            "modified": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(),
+        })
+        if len(items) >= 200:
+            break
+    return items

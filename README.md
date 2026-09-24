@@ -7,7 +7,7 @@ Self-contained **100% local** image and video generation studio. No cloud APIs, 
 | What | Where |
 |------|-------|
 | **App (fast disk)** | `D:\AI\caleb-pc\sites\local-studio` |
-| **Outputs** | `G:\Generation\Local-Studio\output` |
+| **Outputs** | `G:\Generation\StabilityMatrix-win-x64\Data\Images` (same folder Stability Matrix uses) |
 | **Local URL** | http://127.0.0.1:8787 |
 | **Tailnet** | https://calebscomputer.tailfdadcb.ts.net:8787 |
 
@@ -78,7 +78,7 @@ Frames, FPS, size, and Motion are yours. Wan snaps frame count to `4n+1` (max **
 - **Video presets** — subtle, balanced, dynamic, cinematic, and slow clip (61 frames / 10 fps) for Wan 2.2 Lightning
 - **Toast notifications** — clean feedback instead of popup alerts
 - **Keyboard shortcut** — `Ctrl+Enter` to generate
-- **Auto-save** — PNGs written to `G:\Generation\Local-Studio\output` on this PC (toggle in Settings; override with `LOCAL_STUDIO_OUTPUT_DIR`)
+- **Auto-save** — new files are written into Stability Matrix's shared `Data\Images\Text2Img` folder. The gallery reads that whole Images library.
 - **Uncensored** — prompts pass through unchanged to your local model
 
 ## Requirements

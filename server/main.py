@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from server.backends import Automatic1111Backend, ComfyUIBackend
-from server.paths import agent_output_dir
+from server.paths import agent_output_dir, resolve_output_file
 from server.backends.base import BackendInfo, BaseBackend, GenerationParams, GenerationResult
 from server.history import (
     delete_history_bulk,
@@ -217,18 +217,19 @@ async def _normalize_result(result: GenerationResult, params: GenerationParams) 
 
     # Always persist media so History can show thumbnails (and Delete can remove files).
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUTPUT_DIR / "Text2Img").mkdir(parents=True, exist_ok=True)
     stamp = result.seeds[0] if result.seeds else params.seed
     for index, image_b64 in enumerate(images):
-        filename = OUTPUT_DIR / f"{params.mode}_{stamp}_{index}.png"
+        filename = OUTPUT_DIR / "Text2Img" / f"{params.mode}_{stamp}_{index}.png"
         filename.write_bytes(base64.b64decode(image_b64))
-        saved_files.append(filename.name)
+        saved_files.append(filename.relative_to(OUTPUT_DIR).as_posix())
     video_refs: list[str] = []
     for index, video_b64 in enumerate(videos):
-        filename = OUTPUT_DIR / f"{params.mode}_{stamp}_{index}.mp4"
+        filename = OUTPUT_DIR / "Text2Img" / f"{params.mode}_{stamp}_{index}.mp4"
         filename.write_bytes(base64.b64decode(video_b64))
-        saved_files.append(filename.name)
+        saved_files.append(filename.relative_to(OUTPUT_DIR).as_posix())
         # Return a file name, not base64 — Tailscale drops huge generate responses.
-        video_refs.append(filename.name)
+        video_refs.append(filename.relative_to(OUTPUT_DIR).as_posix())
 
     # Always record generation history
     extra = getattr(params, "_history_meta", {})
@@ -744,14 +745,13 @@ async def output_list() -> list[dict[str, Any]]:
     return scan_output_files()
 
 
-@app.delete("/api/output/{filename}")
+@app.delete("/api/output/{filename:path}")
 async def output_delete(filename: str) -> dict[str, Any]:
-    safe_name = Path(filename).name
-    path = (OUTPUT_DIR / safe_name).resolve()
     try:
-        path.relative_to(OUTPUT_DIR.resolve())
+        path = resolve_output_file(filename)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid filename") from exc
+    safe_name = path.relative_to(OUTPUT_DIR.resolve()).as_posix()
     removed = 0
     if path.is_file():
         path.unlink()
@@ -775,10 +775,12 @@ async def output_delete(filename: str) -> dict[str, Any]:
     return {"status": "deleted", "filename": safe_name, "files_removed": removed}
 
 
-@app.get("/api/output/{filename}")
+@app.get("/api/output/{filename:path}")
 async def output_file(filename: str) -> FileResponse:
-    safe_name = Path(filename).name
-    path = OUTPUT_DIR / safe_name
+    try:
+        path = resolve_output_file(filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid filename") from exc
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     media_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",

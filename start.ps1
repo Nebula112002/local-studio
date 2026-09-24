@@ -8,7 +8,7 @@ Set-Location $PSScriptRoot
 
 # App on D:\AI; outputs on G: (never run the studio from G:\Generation).
 if (-not $env:LOCAL_STUDIO_OUTPUT_DIR) {
-    $env:LOCAL_STUDIO_OUTPUT_DIR = "G:\Generation\Local-Studio\output"
+    $env:LOCAL_STUDIO_OUTPUT_DIR = "G:\Generation\StabilityMatrix-win-x64\Data\Images"
 }
 
 $Port = if ($env:LOCAL_STUDIO_PORT) { [int]$env:LOCAL_STUDIO_PORT } else { 8787 }
